@@ -1,0 +1,8 @@
+matplotlib~=3.9.0
+numpy~=1.26.4
+pandas~=2.2.2
+pynumdiff~=0.1.2
+cvxpy~=1.5.1
+FlyPlotLib @ git+https://github.com/florisvb/FlyPlotLib.git@d0d4ab31ddbbffeb9a76e5fe0e80b6907e3bef5e
+mosek~=10.2.0
+tables~=3.9.2
