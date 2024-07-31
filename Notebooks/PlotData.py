@@ -64,5 +64,5 @@ def plot_trajectory(fly_trajectory_and_body, every_nth=4, L=0.008):
     ax.quiver(position_x, position_y, thrust_x*thrust_scale, thrust_y*thrust_scale, color="green", angles='xy',
               scale_units='xy', scale=1, width=0.0025, label="Thrust")
 
-    ax.set_title(fly_trajectory_and_body["trajec_objid"][0])
+    ax.set_title(fly_trajectory_and_body["trajec_objid"].iloc[0])
     ax.legend()
