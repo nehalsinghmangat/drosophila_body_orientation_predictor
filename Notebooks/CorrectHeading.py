@@ -1,4 +1,5 @@
 import cvxpy
+import numpy as np
 from AugmentData import *
 from cvxpy.atoms.norm import norm
 from cvxpy.expressions.expression import Expression
@@ -26,8 +27,7 @@ def correct_heading_jumps(fly_trajectory_and_body):
 
     heading_angle = fly_trajectory_and_body.heading_angle.values
 
-    thrust_x, thrust_y = thrust(fly_trajectory_and_body)
-    thrust_angle = np.arctan2(thrust_y, thrust_x)
+    thrust_angle = fly_trajectory_and_body.thrust_angle.values
 
     diff_btwn_heading_and_thrust = angle_difference(heading_angle, thrust_angle)
     avg_diff_btwn_heading_and_thrust = np.average(diff_btwn_heading_and_thrust)
@@ -50,5 +50,4 @@ def correct_heading_jumps(fly_trajectory_and_body):
 
     # output
     corrected_heading_angle = wrap_angle(heading_angle + k.value * np.pi)
-    fly_trajectory_and_body["heading_angle"] = corrected_heading_angle
-    return fly_trajectory_and_body
+    return corrected_heading_angle
