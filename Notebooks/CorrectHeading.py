@@ -1,10 +1,11 @@
-import cvxpy
+import utils
+import scipy
 import numpy as np
 from AugmentData import *
 from cvxpy.atoms.norm import norm
 from cvxpy.expressions.expression import Expression
 
-def correct_heading_jumps(fly_trajectory_and_body):
+def correct_heading_jumps(traj):
     """
     The heading values randomly jump 180 degrees. This function corrects for such jumps.
 
@@ -15,39 +16,60 @@ def correct_heading_jumps(fly_trajectory_and_body):
     - corrected_fly_data (pd.DataFrame): fly data with corrected heading angles
     """
 
-    def angle_difference(alpha, beta):
-        a = alpha - beta
-        a = (a + np.pi) % (np.pi * 2) - np.pi
-        return a
-
-    def wrap_angle(a):
-        return np.arctan2(np.sin(a), np.cos(a))
+    def circular_distance(angle1, angle2):
+        """
+        Calculate the shortest distance between two angles on a 2D circle.
         
-    k = cvxpy.Variable(len(fly_trajectory_and_body), integer=True)
-
-    heading_angle = fly_trajectory_and_body.heading_angle.values
-
-    thrust_angle = fly_trajectory_and_body.thrust_angle.values
-
-    diff_btwn_heading_and_thrust = angle_difference(heading_angle, thrust_angle)
-    avg_diff_btwn_heading_and_thrust = np.average(diff_btwn_heading_and_thrust)
+        Parameters:
+        angle1, angle2: Angles in radians.
+        
+        Returns:
+        float: Shortest distance between the two angles on the circle.
+        """
+        # Normalize angles to range [0, 2π)
+        angle1 = angle1 % (2 * np.pi)
+        angle2 = angle2 % (2 * np.pi)
+        
+        # Calculate the direct distance and the wrapped-around distance
+        direct_distance = np.abs(angle1 - angle2)
+        wrapped_distance = 2 * np.pi - direct_distance
+        
+        # Return the shorter of the two distances
+        return min(direct_distance, wrapped_distance)
     
-    # terms
-    L1 = cvxpy.tv(heading_angle + np.pi * k)
-    L3 = cvxpy.norm1(avg_diff_btwn_heading_and_thrust + np.pi * k)  # theta + np.pi*k - thrust_angle
+    fc = 20  # low-pass cutoff filter frequency [hz]
 
-    # coefficients
-    alpha1 = 1
-    alpha3 = 1
+    traj_add = traj.copy()
 
-    L = alpha1 * L1 + alpha3 * L3
+    dt = np.median(np.diff(traj_add.timestamp))
+    fs = 1 / dt
+    b, a = scipy.signal.butter(3, fc / (fs/2), btype='low')
 
-    # solve the optimization
-    constraints = [-1 <= k, k <= 1]
-    obj = cvxpy.Minimize(L)
-    prob = cvxpy.Problem(obj, constraints)
-    prob.solve(solver='MOSEK')
+    # Heading
+    angle = traj_add['ellipse_short_angle'].values  # raw angle from ellipse
+    angle = np.unwrap(angle)  # unwrap
+    angle = scipy.signal.filtfilt(b, a, angle)  # low-pass filter
+    angle = utils.wrapToPi(angle - np.pi/2) # re-wrap & shift pi/2
 
-    # output
-    corrected_heading_angle = wrap_angle(heading_angle + k.value * np.pi)
+    # Align initial heading with course direction
+    initial_window = 5
+    course_direction = traj_add["groundspeed_angle"]
+    circ_diff_start = circular_distance(scipy.stats.circmean(course_direction[0:initial_window], low=-np.pi, high=np.pi),
+                                        scipy.stats.circmean(angle[0:initial_window], low=-np.pi, high=np.pi))
+    if circ_diff_start > 0.5*np.pi:
+        angle = angle + np.pi * np.sign(circ_diff_start) 
+
+    # Correct heading
+    corrected_heading_angle = np.unwrap(angle, period=np.pi, discont=0.5*np.pi)  # use unwrap function to detect pi flips
+    
+    # Align heading
+    phi_mean = scipy.stats.circmean(utils.wrapToPi(corrected_heading_angle), low=-np.pi, high=np.pi)
+    psi_mean = scipy.stats.circmean(utils.wrapToPi(course_direction), low=-np.pi, high=np.pi)
+    circ_diff = circular_distance(phi_mean, psi_mean)
+    
+    if circ_diff > 0.5*np.pi:
+        corrected_heading_angle = corrected_heading_angle + np.pi * np.sign(circ_diff)
+     
+    corrected_heading_angle = utils.wrapToPi(corrected_heading_angle)  # wrap
+    
     return corrected_heading_angle
