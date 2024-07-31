@@ -10,9 +10,9 @@ def remove_irrelevant_trajectory_data(trajec_df):
     trimmed_trajec_df = trajec_df.copy()
     trimmed_trajec_df = trimmed_trajec_df.drop(
         ["course", "frame", "odor", "odor_stimulus", "position_z", "velocity_z",
-         "wind_speed", "wind_direction", "groundspeed_xy", "airspeed_xy"], axis=1)
+         "wind_direction", "groundspeed_xy", "airspeed_xy"], axis=1)
     trimmed_and_reordered_trajec_df = trimmed_trajec_df[['objid', 'timestamp', 'position_x', 'position_y',
-                                                         'velocity_x', 'velocity_y', 'airvelocity_x', 'airvelocity_y']]
+                                                         'velocity_x', 'velocity_y', 'airvelocity_x', 'airvelocity_y',"wind_speed"]]
     trimmed_and_reordered_trajec_df = trimmed_and_reordered_trajec_df.rename(columns={'objid': 'trajec_objid'})
     return trimmed_and_reordered_trajec_df
 
