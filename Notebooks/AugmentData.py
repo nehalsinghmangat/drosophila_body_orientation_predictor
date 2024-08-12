@@ -30,8 +30,7 @@ def augment_df(fly_trajectory_and_body):
 def _tranform_short_axis_to_heading_angle(angle):
     angle = np.where(angle < 0, angle - np.pi / 2, angle)
     angle = np.where(angle > 0, angle + np.pi / 2, angle)
-    wrapped_angle = np.arctan2(np.sin(angle), np.cos(angle))
-    return wrapped_angle
+    return angle
 
 
 def _transform_timestamps_to_start_at_zero(fly_trajectory_and_body):

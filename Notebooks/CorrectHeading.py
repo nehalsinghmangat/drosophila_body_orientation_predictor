@@ -37,23 +37,14 @@ def correct_heading_jumps(traj):
         # Return the shorter of the two distances
         return min(direct_distance, wrapped_distance)
     
-    fc = 20  # low-pass cutoff filter frequency [hz]
-
     traj_add = traj.copy()
 
-    dt = np.median(np.diff(traj_add.timestamp))
-    fs = 1 / dt
-    b, a = scipy.signal.butter(3, fc / (fs/2), btype='low')
-
     # Heading
-    angle = traj_add['ellipse_short_angle'].values  # raw angle from ellipse
-    angle = np.unwrap(angle)  # unwrap
-    angle = scipy.signal.filtfilt(b, a, angle)  # low-pass filter
-    angle = utils.wrapToPi(angle - np.pi/2) # re-wrap & shift pi/2
+    angle = traj_add['heading_angle'].values # heading_angle
 
     # Align initial heading with course direction
     initial_window = 5
-    course_direction = traj_add["groundspeed_angle"]
+    course_direction = traj_add["airspeed_angle"]
     circ_diff_start = circular_distance(scipy.stats.circmean(course_direction[0:initial_window], low=-np.pi, high=np.pi),
                                         scipy.stats.circmean(angle[0:initial_window], low=-np.pi, high=np.pi))
     if circ_diff_start > 0.5*np.pi:
