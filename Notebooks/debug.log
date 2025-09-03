@@ -8,3 +8,7 @@
 2025-04-30 12:48:27,750 [INFO] NumExpr defaulting to 8 threads.
 2025-05-09 21:48:26,363 [INFO] Note: NumExpr detected 16 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
 2025-05-09 21:48:26,365 [INFO] NumExpr defaulting to 8 threads.
+2025-05-20 17:42:54,987 [INFO] Note: NumExpr detected 16 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-05-20 17:42:54,990 [INFO] NumExpr defaulting to 8 threads.
+2025-05-23 13:56:12,237 [INFO] Note: NumExpr detected 16 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-05-23 13:56:12,241 [INFO] NumExpr defaulting to 8 threads.
