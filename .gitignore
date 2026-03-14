@@ -27,3 +27,4 @@ paper/*.fdb_latexmk
 .envrc
 
 *.csv
+*.svg

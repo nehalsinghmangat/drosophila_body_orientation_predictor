@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: >-
+  Predicting Drosophila Body Orientation from a Translational
+  Trajectory Using an Artificial Neural Network
+message: >-
+  If you use this software, please cite it using the metadata below.
+type: software
+authors:
+  - family-names: Singh Mangat
+    given-names: Nehal
+    orcid: ""  # add your ORCID if you have one
+repository-code: >-
+  https://github.com/nehalsinghmangat/drosophila_body_orientation_predictor
+license: MIT
+date-released: "2024-01-01"  # update with actual release date
+# Uncomment and fill in once published:
+# doi: ""
+# preferred-citation:
+#   type: article
+#   authors:
+#     - family-names: Singh Mangat
+#       given-names: Nehal
+#   title: >-
+#     Predicting Drosophila Body Orientation from a Translational
+#     Trajectory Using an Artificial Neural Network
+#   journal: ""
+#   year: 2024
+#   doi: ""

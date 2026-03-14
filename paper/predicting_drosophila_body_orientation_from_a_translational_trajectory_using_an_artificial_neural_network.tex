@@ -1,0 +1,122 @@
+\documentclass[11pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage{natbib}
+\bibliographystyle{plainnat}
+
+\setcounter{secnumdepth}{4}
+
+\title{Predicting \textit{Drosophila} Body Orientation from a Translational Trajectory using an Artificial Neural Network }
+\author{Nehal Singh Mangat, Floris van Breugel}
+
+\begin{document}
+\maketitle
+\section*{Introduction}
+
+Body orientation is a key behavioral variable in many navigation tasks. However, measuring body orientation for small airborne insects, such as the fruit fly, Drosophila, remains technically challengings. While modern tracking systems can reliably capture the position and velocity of an animal’s center of mass, they often fail to resolve body orientation with sufficient accuracy or consistency.
+
+Here we develop a data-driven estimator that predicts body yaw orientation from translational flight trajectories. Using an existing dataset in which both body orientation and position were measured, we train an artificial neural network to learn the relationship between trajectory kinematics and body heading. The resulting model generates plausible body yaw estimates for arbitrary flight trajectories, enabling the recovery of orientation information in datasets where only center-of-mass motion was recorded. This approach provides a practical tool for extending the behavioral and computational analysis of insect navigation to previously unusable trajectory datasets.
+
+\section*{Methods}
+
+\subsection*{Data Preparation and Preprocessing}
+To train our estimator we used data that was collected as a part of previously published work \citep{van2014plume}. A copy of this data can be downloaded from Data Dryad. For our purposes, two data streams were relevant: (i) flight trajectory data (x,y,z position and velocity measurements over time) and (ii) body-orientation measurements. Trajectories shorter than a minimum duration were removed from the training and test sets. This ensured that only sequences with adequate temporal context were retained for model training and evaluation.
+
+\subsubsection*{Body orientation correction and filtering}
+
+The body orientation measurements were captured using a top down camera. At each frame containing a fly the animal was approximated using an ellipse, and only the parameters of this ellipse were recorded. Thus, the body orientation data is only accurate modulo~$\pi$, resulting in discontinuous ``jumps'' of magnitude~$\pi$ throughout many trajectories. In addition, measurement noise introduced high-frequency jitter that was not physically meaningful.
+Therefore, prior to model training, we applied three steps to correct and smooth the estimates of body orientation.
+
+\paragraph*{\textit{1. Na\"ive Heading Correction.}}
+We first applied a simple heuristic inspired by two behavioral observations: (1) \emph{Drosophila} generally fly with their body axis aligned with the direction of its thrust, and (2) over the temporal resolution of these measurements (0.01 sec), the fly rarely changes its heading by more than $\frac{\pi}{2}$. We selected the initial orientation from two options, either the measured orientation, or the measured orientation $+\pi$, so as to maximize the alignment with the thrust vector. Next, for each subsequent frame we chose the orientation (between the measured orientation, and that $+\pi$) that minimized frame-to-frame heading differences. This procedure resolved most of the $\pi$-jump ambiguities. However, the heuristic failed for some dynamic segments. These cases motivated the subsequent convex-optimization-based correction.
+
+\paragraph*{\textit{2. Convex-Optimization--Based Heading Correction.}}
+To obtain a globally consistent and smooth heading signal, we formulated a mixed-integer convex optimization problem that selects, at each time step,
+which multiple of $\pi$ should be added to the raw orientation measurement.
+
+Let $\theta_t \in [-\pi,\pi)$ denote the raw body-orientation measurement at time index $t = 1,\dots,T$, and let $\varphi_t$ denote the corresponding thrust direction inferred from the flight trajectory. We introduce integer variables $k_t \in \{-1,0,1\}$ that encode whether the heading at time $t$ should be shifted by $-\pi$, $0$, or
+$+\pi$, and define the corrected (unwrapped) heading as
+\[
+    \tilde{\theta}_t = \theta_t + \pi k_t.
+\]
+We further define the raw heading--thrust offset
+\[
+    \delta_t = \mathrm{wrap}(\theta_t - \varphi_t),
+    \qquad
+    \bar{\delta} = \frac{1}{T} \sum_{t=1}^T \delta_t,
+\]
+where $\mathrm{wrap}(\cdot)$ maps angles into $[-\pi,\pi)$. The corrected heading sequence $\{\tilde{\theta}_t\}_{t=1}^T$ is obtained by solving the following mixed-integer
+optimization problem:
+\begin{align}
+    \min_{\{k_t\}} \quad 
+    & \alpha_1 \sum_{t=2}^T 
+        \bigl| \tilde{\theta}_t - \tilde{\theta}_{t-1} \bigr|
+      \;+\;
+      \alpha_2 \sum_{t=1}^T 
+        \bigl| (\tilde{\theta}_t - \varphi_t) - \bar{\delta} \bigr|
+    \label{eq:heading_correction_opt} \\
+    \text{subject to} \quad
+    & k_t \in \{-1,0,1\}, \qquad t = 1,\dots,T. \nonumber
+\end{align}
+
+The first term in the objective is a total-variation penalty that discourages large frame-to-frame changes in heading,
+thereby promoting smoothness of the corrected trajectory. The second term encourages the corrected heading to maintain
+a consistent offset relative to the thrust direction $\varphi_t$, as quantified by the empirical mean offset $\bar{\delta}$.
+
+The weights $\alpha_1$ and $\alpha_2$ were tuned to ensure that the corrected headings were behaviorally plausible when compared with manually inspected trajectories. The final values ($\alpha_1 = 1$, $\alpha_2 = 5$) yielded robust corrections across flies and wind-speed conditions. We solved \eqref{eq:heading_correction_opt} using the \texttt{cvxpy} modeling framework with the MOSEK solver. The final heading signal used for training is obtained by wrapping the optimized headings back to $[-\pi,\pi)$ and replacing the original body-orientation measurements with $\hat{\theta}_t$ in the trajectory data.
+
+\paragraph*{\textit{3. Temporal Smoothing.}}
+To  reduce measurement jitter, we applied a two-stage temporal smoothing procedure. First, the corrected heading sequence was unwrapped over time using a sliding-window algorithm that, at each frame, selects the $2\pi$-shifted representative of the angle that is most consistent with the recent history of the trajectory. This produces a globally continuous heading curve even in the presence of occasional large apparent jumps. Second, the unwrapped signal was filtered using a Savitzky--Golay smoothing procedure
+%(implemented as a differentiating filter with a sampling interval of $0.01$~s), 
+with parameters tuned to suppress high-frequency noise while retaining the slower turning dynamics of interest. The resulting smoothed trajectory was then wrapped back to $[-\pi,\pi)$ and used as the target heading signal for neural network training.
+
+
+\subsubsection*{Feature Augmentation, Rotation Augmentation, and Delay Embedding.}
+To construct the inputs for the neural network, we augmented each trajectory with both rotations
+and a time-delay embedding of the relevant kinematic variables. First, to ensure that the estimator did not
+implicitly encode a preferred global wind direction, we applied a random rotational augmentation to every
+trajectory. For each fly, a rotation angle  was sampled uniformly from $[0,2\pi)$ and applied to all angular
+quantities in that trajectory. 
+
+To provide our network with a short time history of relevant state information we constructed a time-delay embedding of relevant input variables: groundspeed, groundspeed angle, airspeed, airspeed angle, thrust, and thrust angle. Given a backward-looking window of length $W$, we formed the delay-embedded input vector defined only for times $t$ for which a complete $W$-step history was available. In the experiments reported here, we used $W = 4$, which over \( 6 \) input variables yielded $24$ input features per training example. The target output was the rotated heading direction at time $t$, represented as the two-component vector \(y_t = (\cos\theta_t,\; \sin\theta_t)\) stored as the variables \texttt{heading\_angle\_x} and \texttt{heading\_angle\_y}. Delay-embedded trajectories were computed independently for each fly and then concatenated across flies to form the final training dataset used for neural network learning.
+
+\subsection*{Neural Network Training}
+
+We modeled the mapping from delay-embedded kinematic inputs to heading-direction outputs  using a fully connected feedforward neural network. The network consisted of $L$ hidden layers, each with $N$ neurons and rectified linear unit (ReLU) activations, followed by a linear output layer of dimension two corresponding to
+$(\cos\theta_t,\sin\theta_t)$. The input dimension was $n_{\text{in}} = mW$ (with measurements $m = 6$ and time steps $W = 4$), and the
+output dimension was $n_{\text{out}} = 2$. The model was implemented in Keras and trained using the Adam optimizer with a mean-squared-error loss and mean-absolute-error as an auxiliary performance metric.
+
+The dataset of feature–target pairs was split into training and withheld test sets, and the training set was further partitioned internally by Keras using a validation split of $0.2$ during optimization. To select the
+network architecture, we performed a grid search over the number of hidden layers $L \in \{1,2,3\}$ and the number of neurons per hidden layer $N \in \{10,15,20\}$ using the \texttt{scikeras} wrapper and \texttt{GridSearchCV} with three-fold cross-validation and negative mean-squared-error as the scoring criterion. Each candidate model was trained for 150 epochs with a batch size of 256. The best-performing
+configuration was then used to train a final model on the full training set, and this model was subsequently evaluated on the withheld test set. The resulting network weights and architecture were saved for later analysis and use.
+
+\subsection*{Prediction Wrapper and Post-Processing}
+
+During inference, heading predictions were generated using a wrapper function that applies the same feature construction and delay-embedding pipeline used during training. Given a new trajectory, the function first computed its delay-embedded representation using the previously defined augmentation procedure, retaining only the
+$n_{\text{in}}$ input features required by the trained neural network. The estimator then produced a sequence of two-dimensional outputs $(\hat{x}_t, \hat{y}_t)$ corresponding to the predicted heading direction on the unit circle.
+
+To suppress frame-to-frame jitter inherent to feedforward neural-network regressors and to enforce the physical constraint that fly body orientation evolves smoothly over time, an optional light Gaussian smoothing filter ($\sigma = 2$) was applied to the predicted unit-vector components prior to conversion back to angular form. 
+
+Because time-delay embedding requires $W{-}1$ previous observations, the first $W{-}1$ time steps of each trajectory cannot be predicted directly, resulting in a shortened output sequence. To realign the prediction with the original trajectory length, the initial predicted heading value was prepended for the corresponding number of missing time steps, yielding a complete time-aligned predicted heading signal suitable for downstream analysis.
+
+\section*{Results}
+What exactly do we want here? Just the raw estimator results that references the figure(s)?   
+
+\section*{Discussion}
+
+The estimator developed here provides a practical tool for reconstructing plausible body yaw orientations from translational trajectory data when direct measurements of body orientation are unavailable. This capability can enable reanalysis of existing trajectory datasets in which only center-of-mass motion was recorded, allowing researchers to investigate questions related to sensory sampling, navigation strategies, and behavioral control that depend on heading direction. While the direction of the velocity vector is sometimes used as a proxy for heading in trajectory analyses, insects can exhibit substantial misalignment between body axis and velocity direction, particularly during turning maneuvers, making direct estimates of body orientation valuable for behavioral interpretation.
+
+At the same time, several limitations should be considered when applying this approach. The model should be used with caution when extrapolating to flight scenarios that differ substantially from the conditions represented in the training set (e.g. changing ambient wind directions, environmental lighting, etc...), such as different wind regimes, environmental contexts, or species with distinct flight dynamics. In addition, the present estimator predicts only the yaw component of body orientation and does not capture roll or pitch dynamics. Extending this approach to infer full three-dimensional orientation would likely require datasets that include multi-view body pose measurements or additional biomechanical constraints.
+
+\section*{Future Work}
+Worth including this section for a Methods paper?
+\bibliography{main}
+
+\end{document}
+
