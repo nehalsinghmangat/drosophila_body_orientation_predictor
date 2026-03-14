@@ -1,0 +1,29 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+
+# Data — large HDF5 files; download separately from Dryad
+experimentaldata/
+
+# Credentials
+jovyan/mosek/mosek.lic
+
+# LaTeX build artefacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.fls
+paper/*.fdb_latexmk
+
+# Editor / OS
+.vscode/
+.DS_Store
+.envrc
+
+*.csv
