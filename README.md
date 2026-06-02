@@ -1,21 +1,21 @@
 # drosophila_body_orientation_predictor
 
-Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820).
+Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820). Associated with [Predicting Drosophila Body Orientation from a Translational Trajectory using an Artificial Neural Network][https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full].
 
 ## Repository structure
 
 ```
 drosophila_body_orientation_predictor/
 ├── notebooks/
-│   ├── data_pipeline.ipynb     # Data cleaning, correction, and augmentation
-│   ├── model_training.ipynb    # Neural network training and evaluation
-│   ├── utils.py                # All shared functions
-│   └── fly_plot_lib_plot.py    # Trajectory visualisation wrapper
-├── ExperimentalData/           # Raw HDF5 files (downloaded separately, see below)
+│   ├── data_pipeline.ipynb     # Data cleaning, correction, and augmentation (writes to pipelinedata/)
+│   ├── model_training.ipynb    # Neural network training and evaluation (writes to models/)
+│   ├── utils.py                # Shared functions
+│   └── fly_plot_lib_plot.py    # Trajectory visualisation wrapper used in van Breugel et al. (2014)
+├── ExperimentalData/           # Raw HDF5 files (downloaded separately from Dryad)
 │   ├── 30cms/
 │   ├── 40cms/
 │   └── 60cms/
-├── pipelinedata/               # Intermediate outputs written by data_pipeline.ipynb
+├── pipelinedata/               # Intermediate outputs written by data_pipeline.ipynb for inspection
 │   ├── 01_merged/
 │   ├── 02_augmented/
 │   ├── 03_corrected/
@@ -23,9 +23,8 @@ drosophila_body_orientation_predictor/
 │   ├── 05_smoothed/
 │   ├── 06_final/
 │   └── external/
-├── models/                     # Trained Keras models written by model_training.ipynb
-│   ├── model.keras
-│   └── model_CEM_all-angle-rotate.keras
+├── models/                     
+│   └── drosophila_body_orientation_predictor.keras  # This is the predictor this pipeline will generate
 └── requirements.txt
 ```
 
@@ -69,9 +68,9 @@ pip install -r requirements.txt
 
 ### 5. Add a MOSEK licence (optional)
 
-The convex-optimisation heading correction step in `data_pipeline.ipynb` uses the MOSEK solver via `cvxpy`. Place a valid `mosek.lic` at `~/mosek/mosek.lic`. If you do not have a licence, the simpler naïve heading correction is still available and does not require MOSEK.
+The convex-optimisation heading correction step in `data_pipeline.ipynb` uses the MOSEK solver via `cvxpy`. Place a valid `mosek.lic` at `~/mosek/mosek.lic`. If you do not have a licence, the simpler naïve heading correction is still available and does not require MOSEK. If you are associated with a university and would like to get a free license, please see the installation here: [mosek][https://www.mosek.com/products/academic-licenses/]. 
 
-### 6. Launch JupyterLab
+### 6. Launch JupyterLab (or Jupyter Notebook)
 
 ```bash
 jupyter lab
@@ -84,3 +83,5 @@ Run the two notebooks in order:
 1. **`notebooks/data_pipeline.ipynb`** — Loads the raw HDF5 files, merges trajectory and body-orientation streams, corrects 180° heading ambiguities, filters and smooths trajectories, and saves fully preprocessed data to `pipelinedata/06_final/`. Intermediate outputs are written to each numbered subdirectory of `pipelinedata/` for inspection.
 
 2. **`notebooks/model_training.ipynb`** — Loads the preprocessed data from `pipelinedata/06_final/`, constructs a time-delay–embedded feature matrix, runs a hyperparameter grid search, trains the best network, and saves it to `models/model.keras`. Also evaluates predictions on the training dataset and on an external dataset (`pipelinedata/external/`).
+
+If you have any questions regarding the data pipeline, please shoot me an email at nehalsinghmangat.software@gmail.com. If you encounter any issues with running the pipeline or reproducing results, please submit a Github issue.   
