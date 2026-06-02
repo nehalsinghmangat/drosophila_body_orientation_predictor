@@ -1,6 +1,6 @@
 # drosophila_body_orientation_predictor
 
-Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820). Associated with [Predicting Drosophila Body Orientation from a Translational Trajectory using an Artificial Neural Network][https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full].
+Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820). Associated with [Predicting Drosophila Body Orientation from a Translational Trajectory using an Artificial Neural Network](https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full).
 
 ## Repository structure
 
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 ### 5. Add a MOSEK licence (optional)
 
-The convex-optimisation heading correction step in `data_pipeline.ipynb` uses the MOSEK solver via `cvxpy`. Place a valid `mosek.lic` at `~/mosek/mosek.lic`. If you do not have a licence, the simpler naïve heading correction is still available and does not require MOSEK. If you are associated with a university and would like to get a free license, please see the installation here: [mosek][https://www.mosek.com/products/academic-licenses/]. 
+The convex-optimisation heading correction step in `data_pipeline.ipynb` uses the MOSEK solver via `cvxpy`. Place a valid `mosek.lic` at `~/mosek/mosek.lic`. If you do not have a licence, the simpler naïve heading correction is still available and does not require MOSEK. If you are associated with a university and would like to get a free license, please see the installation here: [mosek](https://www.mosek.com/products/academic-licenses/). 
 
 ### 6. Launch JupyterLab (or Jupyter Notebook)
 
