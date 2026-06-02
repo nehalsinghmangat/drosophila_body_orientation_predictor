@@ -1,6 +1,6 @@
 # drosophila_body_orientation_predictor
 
-Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820). Associated with [Predicting Drosophila Body Orientation from a Translational Trajectory using an Artificial Neural Network](https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full).
+Repo for [Mangat et al. (2026)](https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full). Predicts *Drosophila* body heading angle from flight trajectory data using a neural network trained on data from [van Breugel et al. (2014)](https://www.sciencedirect.com/science/article/pii/S0960982213015820).
 
 ## Repository structure
 
