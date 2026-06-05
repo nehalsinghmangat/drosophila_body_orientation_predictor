@@ -18,95 +18,100 @@
 \begin{document}
 \maketitle
 \section*{Introduction}
+Body orientation is a key behavioral variable in many navigation tasks. However, measuring body orientation for small airborne insects, such as the fruit fly, \textit{Drosophila}, remains technically challenging. While modern tracking systems can reliably capture the position and velocity of the center of mass, they often fail to resolve body orientation over the entire trajectory.
 
-Body orientation is a key behavioral variable in many navigation tasks. However, measuring body orientation for small airborne insects, such as the fruit fly, Drosophila, remains technically challengings. While modern tracking systems can reliably capture the position and velocity of an animal’s center of mass, they often fail to resolve body orientation with sufficient accuracy or consistency.
+Simultaneous measurement of flight trajectory and body orientation has been achieved in several laboratory settings. For example, \citet{van2014plume} instrumented a wind tunnel with a top-down camera and inferred body heading from ellipse-fitted silhouettes; however, the auxiliary camera's narrow field of view meant that orientation could be resolved only for a small central subsection of the tunnel, leaving the majority of each trajectory without heading data. Multi-camera three-dimensional reconstruction methods have extended this capability to flight arenas \citep{cheng2015novel, cheng2015estimating}, and high-speed videography at thousands of frames per second has been used to capture rapid orientation changes during evasive maneuvers \citep{muijres2014flies}. In each case, body orientation measurement requires substantial dedicated hardware confined to a purpose-built experimental volume, making it impractical for large-scale or long-duration studies. A common workaround is to substitute the airspeed direction as a proxy for body heading; however, this assumption breaks down during turning maneuvers, casting, and saccades, where body orientation and velocity direction diverge substantially \citep{cheng2015estimating, muijres2014flies, van2014plume}. As a consequence, the large body of existing trajectory data --- including field-scale studies where no orientation optics are feasible \citep{leitch2021long} --- cannot be directly used for analyses that require heading information.
 
-Here we develop a data-driven estimator that predicts body yaw orientation from translational flight trajectories. Using an existing dataset in which both body orientation and position were measured, we train an artificial neural network to learn the relationship between trajectory kinematics and body heading. The resulting model generates plausible body yaw estimates for arbitrary flight trajectories, enabling the recovery of orientation information in datasets where only center-of-mass motion was recorded. This approach provides a practical tool for extending the behavioral and computational analysis of insect navigation to previously unusable trajectory datasets.
+Here we develop a data-driven estimator that predicts body yaw orientation from translational flight trajectories. We leverage an existing dataset \citep{van2014plume} in which body orientation and kinematic trajectory were measured simultaneously, training an artificial neural network to learn the relationship between trajectory kinematics and body heading. Prior work has used trajectory-derived kinematics together with neural networks to estimate other unobservable quantities, such as ambient wind direction \citep{cellini2024discovering}; here we apply an analogous strategy to the body heading itself, which is typically either unmeasured or collapsed into the airspeed direction \citep{cellini2024discovering, leitch2021long}. The resulting model generates plausible body yaw estimates for arbitrary free-flight trajectories, enabling recovery of orientation information from datasets where only center-of-mass motion was recorded. This approach provides a practical tool for extending the behavioral and computational analysis of insect navigation to previously unusable trajectory datasets.
 
 \section*{Methods}
 
-\subsection*{Data Preparation and Preprocessing}
-To train our estimator we used data that was collected as a part of previously published work \citep{van2014plume}. A copy of this data can be downloaded from Data Dryad. For our purposes, two data streams were relevant: (i) flight trajectory data (x,y,z position and velocity measurements over time) and (ii) body-orientation measurements. Trajectories shorter than a minimum duration were removed from the training and test sets. This ensured that only sequences with adequate temporal context were retained for model training and evaluation.
+\subsection*{1.~~Data Preparation and Preprocessing}
+To train our estimator we used data collected as part of previously published work \citep{van2014plume}, available from Data Dryad. Two data streams were relevant: (i) flight trajectory data (x, y, z position and velocity measurements over time) and (ii) body-orientation measurements.
 
-\subsubsection*{Body orientation correction and filtering}
+\subsubsection*{1.1~~Kinematic Feature Augmentation}
+From the raw position and velocity data we computed a set of derived kinematic variables at each time step: groundspeed (magnitude of the horizontal velocity vector), groundspeed angle (direction of the horizontal velocity vector), airspeed (magnitude of the velocity vector relative to the ambient wind), airspeed angle (direction of the airspeed vector), thrust (a proxy for net aerodynamic force, computed from the 3D acceleration), and thrust angle (direction of the thrust vector). These quantities are illustrated for an example trajectory in Figure~\ref{fig:data_pipeline}B.
 
-The body orientation measurements were captured using a top down camera. At each frame containing a fly the animal was approximated using an ellipse, and only the parameters of this ellipse were recorded. Thus, the body orientation data is only accurate modulo~$\pi$, resulting in discontinuous ``jumps'' of magnitude~$\pi$ throughout many trajectories. In addition, measurement noise introduced high-frequency jitter that was not physically meaningful.
-Therefore, prior to model training, we applied three steps to correct and smooth the estimates of body orientation.
+\subsubsection*{1.2~~Body Orientation Correction and Filtering}
+The body orientation measurements were captured using a top-down camera. At each frame containing a fly, the animal was approximated using an ellipse, and only the parameters of this ellipse were recorded. Thus, the body orientation data are accurate only modulo~$\pi$, resulting in discontinuous ``jumps'' of magnitude~$\pi$ throughout many trajectories. In addition, measurement noise introduced high-frequency jitter that was not physically meaningful. Therefore, prior to model training, we applied the three steps described below to correct and smooth the body orientation estimates; an example of their effect on a single trajectory is shown in Figure~\ref{fig:data_pipeline}A.
 
-\paragraph*{\textit{1. Na\"ive Heading Correction.}}
-We first applied a simple heuristic inspired by two behavioral observations: (1) \emph{Drosophila} generally fly with their body axis aligned with the direction of its thrust, and (2) over the temporal resolution of these measurements (0.01 sec), the fly rarely changes its heading by more than $\frac{\pi}{2}$. We selected the initial orientation from two options, either the measured orientation, or the measured orientation $+\pi$, so as to maximize the alignment with the thrust vector. Next, for each subsequent frame we chose the orientation (between the measured orientation, and that $+\pi$) that minimized frame-to-frame heading differences. This procedure resolved most of the $\pi$-jump ambiguities. However, the heuristic failed for some dynamic segments. These cases motivated the subsequent convex-optimization-based correction.
+\paragraph*{\textit{1.2.1~~Na\"ive Heading Correction.}}
+We first applied a simple heuristic inspired by two behavioral observations: (1) \emph{Drosophila} generally fly with their body axis aligned with the direction of thrust, and (2) over the temporal resolution of these measurements (0.01~s), the fly rarely changes its heading by more than $\frac{\pi}{2}$. We selected the initial orientation from two options --- either the measured orientation or the measured orientation $+\pi$ --- so as to maximize alignment with the thrust vector. For each subsequent frame we then chose the orientation (between the measured value and that value $+\pi$) that minimized the frame-to-frame heading difference. This procedure resolved most of the $\pi$-jump ambiguities; however, the heuristic failed for some dynamic segments, motivating the subsequent convex-optimization-based correction.
 
-\paragraph*{\textit{2. Convex-Optimization--Based Heading Correction.}}
-To obtain a globally consistent and smooth heading signal, we formulated a mixed-integer convex optimization problem that selects, at each time step,
-which multiple of $\pi$ should be added to the raw orientation measurement.
+\paragraph*{\textit{1.2.2~~Convex-Optimization--Based Heading Correction.}}
+To obtain a globally consistent and smooth heading signal, we formulated a mixed-integer convex optimization problem that selects, at each time step, which multiple of $\pi$ should be added to the raw orientation measurement.
 
-Let $\theta_t \in [-\pi,\pi)$ denote the raw body-orientation measurement at time index $t = 1,\dots,T$, and let $\varphi_t$ denote the corresponding thrust direction inferred from the flight trajectory. We introduce integer variables $k_t \in \{-1,0,1\}$ that encode whether the heading at time $t$ should be shifted by $-\pi$, $0$, or
-$+\pi$, and define the corrected (unwrapped) heading as
+Let $\theta_t \in [-\pi,\pi)$ denote the raw body-orientation measurement at time index $t = 1,\dots,T$, and let $\varphi_t$ denote the corresponding thrust direction inferred from the flight trajectory. We introduce integer variables $k_t \in \{-1,0,1\}$ that encode whether the heading at time $t$ should be shifted by $-\pi$, $0$, or $+\pi$, and define the corrected heading as
 \[
     \tilde{\theta}_t = \theta_t + \pi k_t.
 \]
-We further define the raw heading--thrust offset
+We further define the per-frame heading--thrust offset
 \[
     \delta_t = \mathrm{wrap}(\theta_t - \varphi_t),
-    \qquad
-    \bar{\delta} = \frac{1}{T} \sum_{t=1}^T \delta_t,
 \]
-where $\mathrm{wrap}(\cdot)$ maps angles into $[-\pi,\pi)$. The corrected heading sequence $\{\tilde{\theta}_t\}_{t=1}^T$ is obtained by solving the following mixed-integer
-optimization problem:
+where $\mathrm{wrap}(\cdot)$ maps angles into $[-\pi,\pi)$, and let $f_t$ denote the thrust magnitude at frame $t$, normalised by its trajectory mean $\bar{f} = \frac{1}{T}\sum_{t=1}^T f_t$. The corrected heading sequence $\{\tilde{\theta}_t\}_{t=1}^T$ is obtained by solving
 \begin{align}
-    \min_{\{k_t\}} \quad 
-    & \alpha_1 \sum_{t=2}^T 
+    \min_{\{k_t\}} \quad
+    & \alpha_1 \sum_{t=2}^T
         \bigl| \tilde{\theta}_t - \tilde{\theta}_{t-1} \bigr|
       \;+\;
-      \alpha_2 \sum_{t=1}^T 
-        \bigl| (\tilde{\theta}_t - \varphi_t) - \bar{\delta} \bigr|
+      \alpha_2 \sum_{t=1}^T
+        \frac{f_t}{\bar{f}} \bigl| \tilde{\theta}_t - \varphi_t \bigr|
     \label{eq:heading_correction_opt} \\
     \text{subject to} \quad
     & k_t \in \{-1,0,1\}, \qquad t = 1,\dots,T. \nonumber
 \end{align}
 
-The first term in the objective is a total-variation penalty that discourages large frame-to-frame changes in heading,
-thereby promoting smoothness of the corrected trajectory. The second term encourages the corrected heading to maintain
-a consistent offset relative to the thrust direction $\varphi_t$, as quantified by the empirical mean offset $\bar{\delta}$.
+The first term is a total-variation penalty that discourages large frame-to-frame heading changes, promoting temporal smoothness. The second term encourages alignment of the corrected heading with the thrust direction $\varphi_t$, weighted at each frame by the normalised thrust magnitude $f_t / \bar{f}$. This weighting reflects the prior that body heading is most reliably constrained by thrust direction during high-force dynamic maneuvers, while the smoothness term is permitted to dominate during low-thrust gliding phases where the thrust direction is a less reliable heading cue.
 
-The weights $\alpha_1$ and $\alpha_2$ were tuned to ensure that the corrected headings were behaviorally plausible when compared with manually inspected trajectories. The final values ($\alpha_1 = 1$, $\alpha_2 = 5$) yielded robust corrections across flies and wind-speed conditions. We solved \eqref{eq:heading_correction_opt} using the \texttt{cvxpy} modeling framework with the MOSEK solver. The final heading signal used for training is obtained by wrapping the optimized headings back to $[-\pi,\pi)$ and replacing the original body-orientation measurements with $\hat{\theta}_t$ in the trajectory data.
+The weights $\alpha_1$ and $\alpha_2$ were tuned by visual inspection of trajectories containing clear saccades and rapid turns, verifying that the corrected heading tracks thrust direction during high-force maneuvers while remaining smooth during low-thrust gliding. Only the ratio $\alpha_2 / \alpha_1$ governs the trade-off; we fixed $\alpha_1 = 1$ and selected $\alpha_2$ accordingly. We solved \eqref{eq:heading_correction_opt} using the \texttt{cvxpy} modeling framework with the MOSEK solver.
 
-\paragraph*{\textit{3. Temporal Smoothing.}}
-To  reduce measurement jitter, we applied a two-stage temporal smoothing procedure. First, the corrected heading sequence was unwrapped over time using a sliding-window algorithm that, at each frame, selects the $2\pi$-shifted representative of the angle that is most consistent with the recent history of the trajectory. This produces a globally continuous heading curve even in the presence of occasional large apparent jumps. Second, the unwrapped signal was filtered using a Savitzky--Golay smoothing procedure
-%(implemented as a differentiating filter with a sampling interval of $0.01$~s), 
-with parameters tuned to suppress high-frequency noise while retaining the slower turning dynamics of interest. The resulting smoothed trajectory was then wrapped back to $[-\pi,\pi)$ and used as the target heading signal for neural network training.
+\paragraph*{\textit{1.2.3~~Trajectory Filtering.}}
+Following heading correction, trajectories that retained residual $\pi$-jumps above a threshold --- indicating that the correction algorithm could not resolve the ambiguity --- were removed from the dataset. Trajectories shorter than a minimum duration were also discarded to ensure that only sequences with adequate temporal context were retained for training and evaluation.
 
+\paragraph*{\textit{1.2.4~~Temporal Smoothing.}}
+To reduce remaining measurement jitter, we applied a two-stage smoothing procedure. First, the corrected heading sequence was unwrapped over time using a sliding-window algorithm that, at each frame, selects the $2\pi$-shifted representative of the angle most consistent with the recent trajectory history, producing a globally continuous heading curve. Second, the unwrapped signal was filtered with a Savitzky--Golay filter, with parameters tuned to suppress high-frequency noise while retaining the slower turning dynamics of interest. The resulting smoothed signal was then wrapped back to $[-\pi,\pi)$ and used as the target heading for neural network training.
 
-\subsubsection*{Feature Augmentation, Rotation Augmentation, and Delay Embedding.}
-To construct the inputs for the neural network, we augmented each trajectory with both rotations
-and a time-delay embedding of the relevant kinematic variables. First, to ensure that the estimator did not
-implicitly encode a preferred global wind direction, we applied a random rotational augmentation to every
-trajectory. For each fly, a rotation angle  was sampled uniformly from $[0,2\pi)$ and applied to all angular
-quantities in that trajectory. 
+\subsection*{2.~~Feature Augmentation, Rotation Augmentation, and Delay Embedding}
+To construct the inputs for the neural network, we built two versions of the delay-embedded dataset from the preprocessed trajectories and concatenated them for training.
 
-To provide our network with a short time history of relevant state information we constructed a time-delay embedding of relevant input variables: groundspeed, groundspeed angle, airspeed, airspeed angle, thrust, and thrust angle. Given a backward-looking window of length $W$, we formed the delay-embedded input vector defined only for times $t$ for which a complete $W$-step history was available. In the experiments reported here, we used $W = 4$, which over \( 6 \) input variables yielded $24$ input features per training example. The target output was the rotated heading direction at time $t$, represented as the two-component vector \(y_t = (\cos\theta_t,\; \sin\theta_t)\) stored as the variables \texttt{heading\_angle\_x} and \texttt{heading\_angle\_y}. Delay-embedded trajectories were computed independently for each fly and then concatenated across flies to form the final training dataset used for neural network learning.
+In both versions, we applied a time-delay embedding over groundspeed, groundspeed angle, airspeed, airspeed angle, thrust, and thrust angle. Given a backward-looking window of length $W$, we formed the delay-embedded input vector for all times $t$ at which a complete $W$-step history was available. In the experiments reported here, $W = 4$, yielding $24$ input features per training example across $m = 6$ variables. The target output was the heading direction at time $t$, represented as $y_t = (\cos\theta_t,\; \sin\theta_t)$. Delay-embedded trajectories were computed independently for each fly and then concatenated within each version.
 
-\subsection*{Neural Network Training}
+The first version used the preprocessed kinematic variables directly, without any rotational transformation (\textit{unaugmented}). The second version applied a random rotational augmentation to each trajectory prior to delay embedding: a rotation angle was sampled uniformly from $[0,2\pi)$ and applied to all angular quantities, and all angles were wrapped to $[-\pi,\pi)$ (\textit{rotation-augmented}). The rotation augmentation prevents the estimator from implicitly encoding a preferred global wind direction. The two datasets were concatenated to form the final training set, so the model is exposed to both the original angular frame and rotationally diverse variants of each trajectory. As shown in Figure~\ref{fig:data_pipeline}C, the joint distributions of heading angle against groundspeed direction and airspeed direction are diffuse and non-linear, confirming that a simple linear mapping from these kinematic variables to heading is insufficient.
 
-We modeled the mapping from delay-embedded kinematic inputs to heading-direction outputs  using a fully connected feedforward neural network. The network consisted of $L$ hidden layers, each with $N$ neurons and rectified linear unit (ReLU) activations, followed by a linear output layer of dimension two corresponding to
-$(\cos\theta_t,\sin\theta_t)$. The input dimension was $n_{\text{in}} = mW$ (with measurements $m = 6$ and time steps $W = 4$), and the
-output dimension was $n_{\text{out}} = 2$. The model was implemented in Keras and trained using the Adam optimizer with a mean-squared-error loss and mean-absolute-error as an auxiliary performance metric.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{../figures/data_pipeline.pdf}
+    \caption{A. An example of the output heading correction algorithm used to resolve the ambiguity in heading measurements. B. Various kinematic measurements over the trajectory. C.  Joint distributions of heading angle versus groundspeed direction (left) and airspeed direction (right), shown as 2D log-scale histograms. The diffuse, non-linear structure of both relationships motivates the use of a neural network estimator.}
+    \label{fig:data_pipeline}
+\end{figure}
 
-The dataset of feature–target pairs was split into training and withheld test sets, and the training set was further partitioned internally by Keras using a validation split of $0.2$ during optimization. To select the
-network architecture, we performed a grid search over the number of hidden layers $L \in \{1,2,3\}$ and the number of neurons per hidden layer $N \in \{10,15,20\}$ using the \texttt{scikeras} wrapper and \texttt{GridSearchCV} with three-fold cross-validation and negative mean-squared-error as the scoring criterion. Each candidate model was trained for 150 epochs with a batch size of 256. The best-performing
-configuration was then used to train a final model on the full training set, and this model was subsequently evaluated on the withheld test set. The resulting network weights and architecture were saved for later analysis and use.
+\subsection*{3.~~Neural Network Training}
+We modeled the mapping from delay-embedded kinematic inputs to heading-direction outputs using a fully connected feedforward neural network (Figure~\ref{fig:model_performance}A). The network consisted of $L$ hidden layers, each with $N$ neurons and ReLU activations, followed by a linear output layer of dimension two corresponding to $(\cos\theta_t,\sin\theta_t)$. The input dimension was $n_{\text{in}} = mW = 24$ and the output dimension was $n_{\text{out}} = 2$. The model was implemented in Keras and trained with the Adam optimizer using mean-squared-error loss.
 
-\subsection*{Prediction Wrapper and Post-Processing}
+\subsubsection*{3.1~~Train/Test Split}
+The combined dataset (unaugmented and rotation-augmented examples concatenated) was split into training and withheld test sets. The same random split was applied to both versions so that trajectories in the test set were held out from both. During optimization, the training set was further partitioned internally by Keras using a validation split of $0.2$.
 
-During inference, heading predictions were generated using a wrapper function that applies the same feature construction and delay-embedding pipeline used during training. Given a new trajectory, the function first computed its delay-embedded representation using the previously defined augmentation procedure, retaining only the
-$n_{\text{in}}$ input features required by the trained neural network. The estimator then produced a sequence of two-dimensional outputs $(\hat{x}_t, \hat{y}_t)$ corresponding to the predicted heading direction on the unit circle.
+\subsubsection*{3.2~~Hyperparameter Search and Model Fitting}
+To select the network architecture, we performed a grid search over the number of hidden layers $L \in \{1,2,3\}$ and neurons per hidden layer $N \in \{10,15,20\}$ using the \texttt{scikeras} wrapper and \texttt{GridSearchCV} with three-fold cross-validation and negative mean-squared-error as the scoring criterion. Each candidate model was trained for 150 epochs with a batch size of 256. The best-performing configuration was then trained on the full training set and evaluated on the withheld test set; model performance is shown in Figure~\ref{fig:model_performance}B.
 
-To suppress frame-to-frame jitter inherent to feedforward neural-network regressors and to enforce the physical constraint that fly body orientation evolves smoothly over time, an optional light Gaussian smoothing filter ($\sigma = 2$) was applied to the predicted unit-vector components prior to conversion back to angular form. 
+\subsection*{4.~~Prediction Wrapper and Post-Processing}
+During inference, heading predictions were generated by a wrapper function that applies the same feature construction and delay-embedding pipeline used during training. Given a new trajectory, the function first computes its delay-embedded representation, retaining only the $n_{\text{in}}$ input features required by the trained network. The estimator then produces a sequence of two-dimensional outputs $(\hat{x}_t, \hat{y}_t)$ on the unit circle.
 
-Because time-delay embedding requires $W{-}1$ previous observations, the first $W{-}1$ time steps of each trajectory cannot be predicted directly, resulting in a shortened output sequence. To realign the prediction with the original trajectory length, the initial predicted heading value was prepended for the corresponding number of missing time steps, yielding a complete time-aligned predicted heading signal suitable for downstream analysis.
+To suppress frame-to-frame jitter and enforce the physical constraint that body orientation evolves smoothly, an optional light Gaussian smoothing filter ($\sigma = 2$) is applied to the predicted unit-vector components prior to conversion back to angular form.
+
+Because time-delay embedding requires $W{-}1$ previous observations, the first $W{-}1$ time steps of each trajectory cannot be predicted directly. To realign the prediction with the original trajectory length, the initial predicted heading value is prepended for the corresponding missing time steps, yielding a complete time-aligned predicted heading signal suitable for downstream analysis.
 
 \section*{Results}
-What exactly do we want here? Just the raw estimator results that references the figure(s)?   
+
+We evaluated the NM model (\texttt{NM\_model}) on the withheld test set ($N = 3{,}313$ trajectories, $101{,}576$ frames) using mean absolute angular error (MAAE), computed as the mean of the smallest absolute angle between predicted and true heading directions. The model was evaluated separately on the unaugmented and rotation-augmented test splits. On the unaugmented test data, the model achieved a mean MAAE of $28.00^\circ$ and a median MAAE of $8.34^\circ$. On the rotation-augmented test data, it achieved a mean MAAE of $29.83^\circ$ and a median MAAE of $10.51^\circ$. The consistently low medians relative to the means indicate that predictions are accurate for the majority of frames, with a heavy tail driven by a subset of trajectories where heading is poorly constrained by the available kinematic features alone. Figure~\ref{fig:model_performance}B shows the 2D density plots of predicted versus true heading across all frames for both conditions; predictions concentrate along the identity line across the full $[-\pi, \pi)$ range, consistent with the quantitative results.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\textwidth]{../figures/Fig2.pdf}
+    \caption{A. An svg image of the neural network with layers, outputs, etc., with a visual on how it performs on a trajectory below. B. 2D log-scale density histogram of predicted versus true heading angle across all $101{,}576$ frames from $3{,}313$ trajectories, evaluated using the NM model (\texttt{NM\_model}). Concentration along the diagonal indicates accurate heading recovery across the full $[-\pi, \pi)$ range.}
+    \label{fig:model_performance}
+\end{figure}
 
 \section*{Discussion}
 
