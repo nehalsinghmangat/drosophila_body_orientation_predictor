@@ -66,8 +66,10 @@ experimentaldata/
 
 ### 3. Create and activate a virtual environment
 
+Requires **Python 3.12**.
+
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
