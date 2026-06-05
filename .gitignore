@@ -8,7 +8,7 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Data — large HDF5 files; download separately from Dryad
-experimentaldata/
+experimentaldata/**/*.h5
 
 # Credentials
 jovyan/mosek/mosek.lic

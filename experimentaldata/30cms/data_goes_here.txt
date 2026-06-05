@@ -1,0 +1,7 @@
+Download the following HDF5 files from Dryad and place them in this directory:
+
+  flight_trajectories_3d_HCS_odor_horizon_matched.h5
+  body_orientations_HCS_odor_horizon_matched.h5
+  body_trajec_matches.h5
+
+See ../README.txt for full dataset documentation and column descriptions.
