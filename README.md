@@ -27,8 +27,7 @@ drosophila_body_orientation_predictor/
 │   ├── 05_smoothed/            # (data_pipeline.ipynb) Savitzky–Golay smoothing applied
 │   ├── 06_final/               # (data_pipeline.ipynb) heading_angle_x/y added; training-ready
 │   ├── 07_time_delay_embedded/ # (model_training.ipynb) time-delay embedded features (no wind aug.)
-│   ├── 08_wind_augmented/      # (model_training.ipynb) time-delay embedded + wind-direction rotation
-│   └── external/               # (model_training.ipynb) augmented external dataset
+│   └── 08_wind_augmented/      # (model_training.ipynb) time-delay embedded + wind-direction rotation
 ├── utils/
 │   ├── utils.py
 │   └── fly_plot_lib_plot.py
