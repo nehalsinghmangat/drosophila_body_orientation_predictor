@@ -21,12 +21,22 @@ jupyter lab
 
 ## Data
 
-Experimental data (Parquet files) must be downloaded separately from Dryad. The expected directory structure:
+Experimental data must be downloaded separately from Dryad:
+
+**Training data** (van Breugel et al. 2014) — Parquet format:
 ```
 experimentaldata/
 ├── 30cms/  # flight_trajectories_3d_HCS_odor_horizon_matched.parquet, body_orientations_HCS_odor_horizon_matched.parquet, body_trajec_matches.parquet
 ├── 40cms/
 └── 60cms/
+```
+
+**External evaluation data** (David et al.) — CSV format, from https://datadryad.org/dataset/doi:10.5061/dryad.zw3r228fw:
+```
+experimentaldata/external/
+├── orco_laminar1.csv
+├── orco_traj2.csv
+└── orco_traj3.csv
 ```
 
 ## Architecture

@@ -1,0 +1,23 @@
+Download the following CSV files from Dryad and place them in this directory:
+
+  Dryad DOI: https://datadryad.org/dataset/doi:10.5061/dryad.zw3r228fw
+
+  From trajectories_for_figures/:
+    orco_laminar1.csv
+    orco_traj2.csv
+    orco_traj3.csv
+
+These are individual Orco-mutant flight trajectories recorded under laminar wind (0.4 m/s).
+They are used in notebooks/model_training.ipynb to evaluate heading predictions on external data.
+
+Column mapping applied by the notebook:
+  obj_id_unique  →  trajec_objid
+  x              →  position_x
+  y              →  position_y
+  heading        →  heading_angle
+  xvel           →  velocity_x
+  yvel           →  velocity_y
+
+Wind conditions added by the notebook (not present in raw files):
+  windspeed       = 0.4 m/s
+  windspeed_angle = -π  (wind from +x direction)
