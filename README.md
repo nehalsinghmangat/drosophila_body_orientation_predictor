@@ -6,7 +6,7 @@ Repo for [Mangat et al. (2026)](https://www.biorxiv.org/content/10.64898/2026.03
 
 ```
 drosophila_body_orientation_predictor/
-├── experimentaldata/           # Raw HDF5 files (download separately from Dryad)
+├── experimentaldata/           # Raw data files in Parquet format (download separately from Dryad)
 │   ├── 30cms/
 │   ├── 40cms/
 │   └── 60cms/
@@ -50,14 +50,14 @@ cd drosophila_body_orientation_predictor
 
 ### 2. Download the experimental data
 
-Raw HDF5 data is archived on [Dryad](https://datadryad.org). Download and place the files so the directory tree matches:
+Raw data is archived on [Dryad](https://datadryad.org) in Parquet format. Download and place the files so the directory tree matches:
 
 ```
 experimentaldata/
 ├── 30cms/
-│   ├── flight_trajectories_3d_HCS_odor_horizon_matched.h5
-│   ├── body_orientations_HCS_odor_horizon_matched.h5
-│   └── body_trajec_matches.h5
+│   ├── flight_trajectories_3d_HCS_odor_horizon_matched.parquet
+│   ├── body_orientations_HCS_odor_horizon_matched.parquet
+│   └── body_trajec_matches.parquet
 ├── 40cms/
 │   └── ...
 └── 60cms/
@@ -93,7 +93,7 @@ jupyter lab
 
 Run the two notebooks in order:
 
-1. **`notebooks/data_pipeline.ipynb`** — Loads the raw HDF5 files, merges trajectory and body-orientation streams, corrects 180° heading ambiguities, filters and smooths trajectories, and saves fully preprocessed data to `pipelinedata/06_final/`. Intermediate outputs are written to each numbered subdirectory of `pipelinedata/` for inspection.
+1. **`notebooks/data_pipeline.ipynb`** — Loads the raw Parquet files, merges trajectory and body-orientation streams, corrects 180° heading ambiguities, filters and smooths trajectories, and saves fully preprocessed data to `pipelinedata/06_final/`. Intermediate outputs are written to each numbered subdirectory of `pipelinedata/` for inspection.
 
 2. **`notebooks/model_training.ipynb`** — Loads the preprocessed data from `pipelinedata/06_final/`, constructs a time-delay–embedded feature matrix (saved to `pipelinedata/07_time_delay_embedded/`) and a wind-direction–augmented variant (saved to `pipelinedata/08_wind_augmented/`), runs a hyperparameter grid search, trains the best network, and saves it to `models/drosophila_body_orientation_predictor.keras`. Also evaluates predictions on the training dataset and on an external dataset (`pipelinedata/external/`).
 

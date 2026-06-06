@@ -28,3 +28,4 @@ paper/*.fdb_latexmk
 
 *.csv
 *.svg
+*.parquet
