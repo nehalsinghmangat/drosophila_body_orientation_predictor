@@ -37,8 +37,9 @@ import fly_plot_lib_plot as fpl
 # Colormaps
 # ============================================================
 
-blue_cmap = mcolors.LinearSegmentedColormap.from_list('blue_cmap', ['blue', 'blue'])
-red_cmap = mcolors.LinearSegmentedColormap.from_list('red_cmap', ['red', 'red'])
+blue_cmap   = mcolors.LinearSegmentedColormap.from_list('blue_cmap',   ['blue',       'blue'])
+red_cmap    = mcolors.LinearSegmentedColormap.from_list('red_cmap',    ['red',        'red'])
+orange_cmap = mcolors.LinearSegmentedColormap.from_list('orange_cmap', ['darkorange', 'darkorange'])
 
 
 # ============================================================
@@ -899,6 +900,12 @@ def plot_trajectory(
     every_nth: int = 4,
     L: float = 0.008,
     legend: bool = True,
+    heading_color: str = 'blue',
+    heading_size: float = 0.5,
+    heading_alpha: float = 0.8,
+    show_groundspeed: bool = False,
+    arrow_scale: float = 1.0,
+    arrow_width: float = 0.03,
 ):
     """
     Plot a fly trajectory with quiver arrows for heading, air velocity, and thrust.
@@ -907,9 +914,10 @@ def plot_trajectory(
     ----------
     ax : matplotlib.axes.Axes
     fly_trajectory_and_body : pd.DataFrame
-        Must have: position_x, position_y, heading_angle, airvelocity_x,
-        airvelocity_y, thrust_angle, thrust, trajec_objid, and (if
-        plot_ellipses=True) eccentricity, ellipse_short_angle.
+        Must have: position_x, position_y, velocity_x, velocity_y,
+        heading_angle, airvelocity_x, airvelocity_y, thrust_angle, thrust,
+        trajec_objid, and (if plot_ellipses=True) eccentricity,
+        ellipse_short_angle.
     plot_ellipses : bool
         If True, draw body ellipses at each sampled point.
     every_nth : int
@@ -917,6 +925,8 @@ def plot_trajectory(
     L : float
         Major axis length for ellipses (plot units).
     legend : bool
+    show_groundspeed : bool
+        If True, draw groundspeed direction quiver arrows.
     """
     ax.set_aspect('equal')
     padding = 0.01
@@ -947,21 +957,40 @@ def plot_trajectory(
     air_vy = fly_trajectory_and_body['airvelocity_y'].iloc[::every_nth].values
     thrust_angle = fly_trajectory_and_body['thrust_angle'].iloc[::every_nth].values
     thrust_mag = fly_trajectory_and_body['thrust'].iloc[::every_nth].values
+    gnd_vx = fly_trajectory_and_body['velocity_x'].iloc[::every_nth].values
+    gnd_vy = fly_trajectory_and_body['velocity_y'].iloc[::every_nth].values
+    gnd_speed = np.sqrt(gnd_vx**2 + gnd_vy**2)
+    gnd_speed = np.where(gnd_speed == 0, 1, gnd_speed)
 
-    plot_scale = 0.015
-    thrust_scale = 10000
+    plot_scale = 0.015 * arrow_scale
+    thrust_scale = 10000 * arrow_scale
 
-    ax.quiver(pos_x, pos_y, np.cos(heading) * plot_scale, np.sin(heading) * plot_scale,
-              color="darkorange", angles='xy', scale_units='xy', scale=1, width=0.0025,
-              label="Heading")
+    # Heading — triangles via fpl.colorline_with_heading
+    xymean = np.mean(np.abs(np.hstack((pos_x, pos_y))))
+    xymean_scaled = 0.21 * xymean * heading_size
+    size_radius = 0.01 * heading_size if xymean_scaled < 0.0001 else float(np.hstack((xymean_scaled, 1))[0])
+    heading_cmap = mcolors.LinearSegmentedColormap.from_list('_heading', [heading_color, heading_color])
+    color_vals = np.ones(len(pos_x))
+    fpl.colorline_with_heading(
+        ax, np.flip(pos_x), np.flip(pos_y), np.flip(color_vals), np.flip(heading),
+        nskip=0, size_radius=size_radius, deg=False, colormap=heading_cmap,
+        center_point_size=0.0001, colornorm=[0, 1], show_centers=False,
+        size_angle=20, alpha=heading_alpha, edgecolor='none',
+    )
     ax.quiver(pos_x, pos_y, air_vx * plot_scale, air_vy * plot_scale,
-              color="blue", angles='xy', scale_units='xy', scale=1, width=0.0025,
+              color="blue", angles='xy', scale_units='xy', scale=1, width=arrow_width,
               label="Air velocity")
     ax.quiver(pos_x, pos_y,
               np.cos(thrust_angle) * thrust_mag * thrust_scale,
               np.sin(thrust_angle) * thrust_mag * thrust_scale,
-              color="green", angles='xy', scale_units='xy', scale=1, width=0.0025,
+              color="green", angles='xy', scale_units='xy', scale=1, width=arrow_width,
               label="Thrust")
+    if show_groundspeed:
+        ax.quiver(pos_x, pos_y,
+                  (gnd_vx / gnd_speed) * plot_scale,
+                  (gnd_vy / gnd_speed) * plot_scale,
+                  color="red", angles='xy', scale_units='xy', scale=1, width=arrow_width,
+                  label="Groundspeed dir.")
 
     ax.set_title(fly_trajectory_and_body["trajec_objid"].iloc[0])
     if legend:
@@ -1161,8 +1190,8 @@ def plot_fly_inputs_stacked(df: pd.DataFrame, axes=None):
     colors = {
         'groundspeed':       'red',
         'groundspeed_angle': 'red',
-        'airspeed':          'blue',
-        'airspeed_angle':    'blue',
+        'airspeed':          'turquoise',
+        'airspeed_angle':    'turquoise',
         'thrust':            'green',
         'thrust_angle':      'green',
     }
