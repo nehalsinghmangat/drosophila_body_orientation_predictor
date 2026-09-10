@@ -21,6 +21,9 @@ pynumdiff==0.2.2
 # Symbolic math (used in fly_plot_lib_plot.py)
 sympy==1.13.1
 
+# Statistics (OLS/circular-regression baselines, reviewer-response notebooks)
+statsmodels==0.15.0
+
 # Jupyter
 jupyterlab==4.2.4
 ipykernel==6.29.5

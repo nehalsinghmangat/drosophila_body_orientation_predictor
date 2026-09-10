@@ -1,0 +1,545 @@
+PLAN FOR ADDRESSING REVIEWER CONCERNS
+======================================
+(Reviewers #1, #2, #3 — see reviewer_feedback.txt)
+
+All three reviewers converge on two structural problems: (A) train/test
+leakage from a row-level random split of overlapping time-delay windows,
+and (B) circularity from using thrust to both correct the target heading
+and predict it. These are verified as real in the current code (utils.py,
+notebooks/model_training.ipynb), not just reviewer speculation, so they
+are treated as non-negotiable (Essential) below. Everything else is
+ordered by how much it blocks re-review.
+
+Also open: the numbers in the current paper/*.tex draft (3,313 test
+trajectories, 101,576 frames, median MAAE 8.34/10.51 unaug/aug) do not
+match the numbers the reviewers quote (2,340 trajectories, 21,129/64,026
+frames, ~5 deg). Reconcile which manuscript version was reviewed before
+finalizing the response letter — this affects which numeric claims in the
+response need to reference.
+
+UPDATE 2026-09-09: this repo's `main` was found to have diverged from the
+real upstream (github.com/nehalsinghmangat/drosophila_body_orientation_predictor,
+origin/main) at commit e5dc818, with two local-only commits containing a bug
+in `convex_opt_heading_correction` (plain `*` between a numpy array and a
+cvxpy expression, instead of `cvxpy.multiply`, plus a since-removed boundary-
+anchoring constraint). `main` has been reset to origin/main (44e2646),
+discarding those two incorrect commits. The real published manuscript is
+https://www.biorxiv.org/content/10.64898/2026.03.30.715335v1.full — its
+abstract/Results numbers (3,313 test trajectories, 101,576 frames, MAAE
+28.00/8.34 unaug, 29.83/10.51 aug) match `paper/*.tex` exactly, confirming
+that file is a faithful (if incomplete — no abstract, funding, or data-
+availability sections) transcription of the real paper, not an orphaned
+rewrite. The downwind claim reviewers paraphrase is real and verbatim in
+that abstract: "a heavy tail driven by a subset of trajectories where
+heading is poorly constrained by the available features alone (often
+during portions of a trajectory where flies were headed downwind)." The
+reviewer-quoted numbers (2,340 trajectories, 21,129/64,026 frames, ~5 deg)
+still do not match bioRxiv v1, but after regenerating the pipeline under
+the corrected utils.py, it now retains exactly 2,340 trajectories (71,145
+frames) — an exact match on trajectory count. So the manuscript reviewers
+actually saw was built from a pipeline essentially identical to this
+corrected one; the remaining frame-count mismatch (71,145 here vs.
+21,129/64,026 quoted) is narrowed to a question of which stage/subset of
+frames those numbers refer to (e.g. test-only vs. train-only vs. some
+intermediate stage), not a wholesale data mismatch. See the FINDINGS
+section at the end of this file for full results from the completed
+re-analysis (items 1-11 below are now done, against the corrected data).
+
+--------------------------------------------------------------------
+ESSENTIAL (must fix before resubmission; all 3 reviewers require these)
+--------------------------------------------------------------------
+
+1. Trajectory/fly-grouped train-test split
+   - Replace the row-level `train_test_split(X, y, test_size=0.33,
+     random_state=42)` in model_training.ipynb with a split performed on
+     whole trajectory IDs (or fly IDs, if available), then expand each
+     partition into delay-embedded rows afterward.
+   - Use `sklearn.model_selection.GroupShuffleSplit` keyed on trajectory
+     ID (or fly ID) instead of the current row-level call.
+   - Verify no trajectory ID appears in more than one of
+     train/validation/test after the split.
+   - Report counts: number of trajectories per split, number of flies
+     per split (if known), number of frames per split.
+
+2. Grouped cross-validation for hyperparameter search
+   - Replace `GridSearchCV(..., cv=3)` with a grouped splitter:
+     `GroupKFold(n_splits=3)` (or similar), passing `groups=` (trajectory
+     ID) to `grid.fit()`.
+   - Re-run the full grid search under this scheme; report whether the
+     selected architecture/hyperparameters change.
+   - Also check the Keras internal `validation_split` (if used during
+     final training) — replace any random validation split with a
+     trajectory-grouped one.
+
+3. Address thrust circularity
+   - Re-train and re-evaluate the model with `thrust` and `thrust_angle`
+     removed from the input feature set (down to 4 variables x window=4
+     = 16 inputs instead of 24).
+   - Report accuracy side-by-side: full model (24 inputs) vs.
+     thrust-ablated model (16 inputs), using the corrected
+     trajectory-grouped split.
+   - Report performance of the correction procedure's own output as a
+     baseline predictor (i.e., how well does thrust direction alone, or
+     the naive/convex-opt corrected heading itself, "predict" the target
+     it was used to build) — this quantifies how much of the ANN's
+     apparent accuracy could be attributable to the shared thrust signal.
+   - If feasible, identify or hand-annotate a small subset of frames
+     where anterior-posterior orientation can be resolved independently
+     of thrust (e.g., unambiguous raw ellipse orientation, or manual
+     frame review) and report model error restricted to that subset.
+
+4. Fix augmentation/split ordering
+   - Perform the trajectory-grouped split (item 1) on the ORIGINAL,
+     unaugmented trajectories first.
+   - Apply rotation augmentation only to trajectories assigned to the
+     training partition. Validation/test partitions stay unaugmented.
+   - Remove the current pattern of concatenating original + rotated data
+     before splitting, and remove the three separate `train_test_split`
+     calls on different arrays (X, X_unaug, X_wind) with the same
+     `random_state` — that does not guarantee consistent partitioning
+     across the three and does not match what the manuscript describes.
+   - Document the exact order (trajectory split -> preprocessing fit on
+     train only -> augmentation on train only -> embedding -> evaluate
+     once on held-out unaugmented test trajectories) as pseudocode or a
+     flow diagram in the Methods section.
+
+5. Trajectory-level (not frame-level) error reporting
+   - Add explicit metric computation to model_training.ipynb (currently
+     no notebook cell computes median/mean angular error at all — it
+     only appears in the manuscript text).
+   - Compute per-trajectory median/mean angular error, then report the
+     distribution of that per-trajectory statistic across held-out
+     trajectories (median, IQR, bootstrap CI resampled at the trajectory
+     level — not the frame level).
+   - Report the number/proportion of trajectories exceeding a stated
+     practical error threshold (pick and justify a threshold, e.g. 15-20
+     deg).
+   - Add a trajectory-level box/violin or CDF plot alongside the existing
+     frame-pooled density plot.
+   - Repeat training with several random seeds/initializations and report
+     variability across runs.
+
+6. Quantitative baselines
+   - Add a dedicated evaluation cell/table comparing, on the SAME
+     trajectory-grouped held-out test trajectories:
+     a. ground-velocity direction
+     b. air-velocity direction
+     c. thrust direction alone
+     d. naive_heading_correction output
+     e. convex_opt_heading_correction output (or a trajectory-only
+        variant usable at inference time)
+     f. a linear/circular regression baseline on the same 24 (or 16)
+        inputs
+     g. a persistence model (previous predicted/observed heading)
+     h. ANN without time-delay embedding
+     i. ANN without rotation augmentation
+     j. ANN without thrust features (= item 3)
+   - Report mean, median, quantiles, and the trajectory-level statistics
+     from item 5 for each baseline, not just a qualitative plot against
+     ground velocity.
+
+--------------------------------------------------------------------
+STRONGLY RECOMMENDED
+--------------------------------------------------------------------
+
+7. Report raw vs. smoothed prediction performance
+   - `plot_trajectory_with_predicted_heading(..., smooth=True)` applies
+     gaussian_filter1d(sigma=2) to predicted components before computing
+     heading; `custom_density_plots` does not smooth. Make this explicit:
+     report accuracy for (a) raw ANN output, (b) Gaussian-smoothed output,
+     and (c) at least one alternate smoothing value, as separate rows in
+     the results table.
+   - Report metrics with and without the first W-1 boundary frames
+     (currently filled by repeating the first prediction), or exclude them
+     entirely and say so.
+
+8. Sensitivity analysis on the correction procedure
+   - Sweep the alpha2/alpha1 ratio in convex_opt_heading_correction over
+     a documented range and report how (a) the corrected heading and
+     (b) downstream ANN accuracy change.
+   - Report the exact values used for: alpha2/alpha1, the residual
+     jump-removal threshold, Savitzky-Golay window length and polynomial
+     order, and sliding-window unwrapping parameters — either directly in
+     Methods or via a checked-in config file referenced by the paper.
+   - Report how many trajectories were excluded at each pipeline stage,
+     percentage of frames shifted by pi, percentage of trajectories
+     requiring the convex-opt step after the naive step, and whether
+     preprocessing parameters were chosen before or after looking at test
+     trajectories.
+
+9. Leave-one-wind-speed-out generalization test
+   - Train on 2 of {0.3, 0.4, 0.6} m/s, test on the held-out speed;
+     repeat for all 3 combinations.
+   - Report error stratified by wind speed and by upwind/crosswind/
+     downwind flight segment (the manuscript already notes downwind
+     errors qualitatively — quantify this).
+   - Optionally stratify further by airspeed, groundspeed, thrust
+     magnitude, turning rate, slip angle, distance from camera center.
+
+10. Dataset flow table
+    - Report, from raw data to final training set: initial trajectory/
+      frame counts, number removed for being <0.12s, number removed for
+      failed correction, final trajectory/frame counts, duration
+      distribution, and counts assigned to train/val/test.
+    - Clarify explicitly whether "2,340 trajectories" (or whatever the
+      reconciled figure becomes) refers to all retained trajectories or
+      training-only.
+
+11. Uncertainty / out-of-distribution handling
+    - Add at minimum a documented valid input range (airspeed, thrust,
+      etc.) derived from training data, and have the prediction wrapper
+      warn when inputs fall outside it.
+    - If time permits, add an ensemble/MC-dropout/bootstrap variant to
+      produce a per-prediction confidence estimate.
+
+--------------------------------------------------------------------
+MANUSCRIPT / ADMINISTRATIVE FIXES
+--------------------------------------------------------------------
+
+12. Reconcile the numeric mismatch
+    - Confirm which manuscript version was actually reviewed and update
+      the current paper/*.tex so abstract and Results numbers agree with
+      each other and with what re-analysis (items 1-6) actually produces.
+    - State clearly whether "unaugmented test data" and "rotation-
+      augmented test data" refer to different trained models, different
+      test-time transforms, or both.
+
+13. Reconcile data/code/funding statements
+    - Make the Data/Code Availability statement in the manuscript match
+      the submission form (Dryad reviewer link + GitHub), and ensure the
+      deposited dataset includes corrected orientation targets, raw
+      orientation measurements (where permitted), trajectory group IDs,
+      the predefined grouped splits, and all preprocessing parameters.
+    - Correct the funding/financial-disclosure statement to match the
+      manuscript (NIH BRAIN, NSF AI Institute in Dynamics) instead of
+      "no specific funding," and identify funded author(s), grant
+      numbers, and funder roles.
+    - Document provenance/authorization for reuse of the previously
+      unpublished body-orientation data, and distinguish it clearly from
+      the previously published trajectory data.
+
+14. Terminology and narrower claims
+    - Define "heading," "body yaw," "body orientation" usage explicitly
+      (interchangeable or not).
+    - State the reference frame/zero-direction/positive-rotation
+      convention and how angular differences are wrapped for error
+      calculation explicitly in Methods (partially covered by CLAUDE.md's
+      "Coordinate frame convention" section — promote this into the
+      paper).
+    - Narrow the Introduction's "arbitrary free-flight trajectories"
+      claim to "trajectories similar to the training distribution
+      (single lab, single species, 3 wind speeds, camera-visible
+      segments)."
+    - Change Figure 2's "correctly estimates" wording to a neutral
+      "estimates."
+    - Report model size, training time, inference speed; state numerical
+      differentiation/filtering method for acceleration/thrust; state
+      handling of zero-magnitude velocity/thrust vectors when computing
+      angles; report mass/density/area/drag-coefficient values directly
+      and the vector form of the drag equation; fix broken-word/line-wrap
+      typography.
+
+--------------------------------------------------------------------
+SUGGESTED ORDER OF WORK
+--------------------------------------------------------------------
+
+1. Reconcile numbers/manuscript version (item 12) so re-analysis targets
+   the right claims.
+2. Implement trajectory-grouped split + GroupKFold (items 1-2) — this is
+   the shared prerequisite for every downstream re-analysis.
+3. Re-run full pipeline (fix augmentation ordering, item 4) under the new
+   split.
+4. Run thrust-ablation and baseline comparisons (items 3, 6) using the
+   corrected split.
+5. Compute trajectory-level metrics, smoothing comparison, and
+   sensitivity analyses (items 5, 7, 8).
+6. Run wind-speed generalization tests and stratified error analysis
+   (item 9).
+7. Fill in dataset-flow table, uncertainty handling, and administrative/
+   manuscript fixes (items 10, 11, 13, 14) in parallel with writing the
+   revised manuscript and response letter.
+
+--------------------------------------------------------------------
+FINDINGS FROM COMPLETED ANALYSIS (2026-09-09)
+--------------------------------------------------------------------
+
+Items 1-11 above are done. Three notebooks implement them, all against the
+corrected pipeline (2,338 trajectories / 71,145 frames — see the UPDATE
+note near the top of this file for why the numbers changed from an earlier,
+locally-broken run that only retained 718 trajectories):
+
+  notebooks/model_training_based_on_reviewer_feedback.ipynb              (items 1-6, Essential)
+  notebooks/model_training_based_on_reviewer_feedback_part2.ipynb        (items 7-11, Strongly recommended)
+  notebooks/model_training_based_on_reviewer_feedback_part3_directional_breakdown.ipynb
+                                                                          (per-model directional breakdown, follow-up to item 9)
+  notebooks/model_training_based_on_reviewer_feedback_part4_rotation_generalization.ipynb
+                                                                          (checks whether "simpler" ablations actually generalize
+                                                                           across wind directions, or just overfit to the one in
+                                                                           this dataset — see ROTATION AUGMENTATION section below)
+  notebooks/model_training_based_on_reviewer_feedback_part5_window_size_sweep.ipynb
+                                                                          (time-delay window size 1-10, all WITH augmentation —
+                                                                           see FOLLOW-UP, WINDOW-SIZE SWEEP below)
+  notebooks/model_training_based_on_reviewer_feedback_part6_window_multiseed.ipynb
+                                                                          (4-seed replication of windows {1,3,4} — see
+                                                                           MULTI-SEED FOLLOW-UP below)
+
+Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
+figures/reviewer_response_*.svg.
+
+ITEMS 1-6 (Essential) — headline numbers, median per-trajectory angular
+error on the held-out, trajectory-grouped test set (771 trajectories):
+
+    ANN, no rotation augmentation ................. 4.95 deg  [SEE CAVEAT BELOW]
+    ANN, thrust-ablated (16 inputs) ................ 4.95 deg
+    ANN, no time-delay embedding (window=1) ........ 4.96 deg  [SEE CAVEAT BELOW]
+    ANN, full features (24 inputs, headline model) . 5.55 deg
+    Best OLS/circular regression (air+ground) ...... 6.02 deg
+    Ground/air/thrust direction baselines .......... 6.7-15.8 deg
+    Multi-seed variability (4 seeds) ............... 5.21 +/- 0.21 deg
+
+  CAVEAT (see ROTATION AUGMENTATION and FOLLOW-UP, WINDOW-SIZE SWEEP
+  sections below for the full results): the "no rotation augmentation"
+  and "no time-delay embedding" rows above look competitive with, or
+  better than, the full model partly because they are evaluated on the
+  single real wind direction present in this dataset AND were both
+  trained without rotation augmentation, which collapses their accuracy
+  (to 14-28 deg mean error) the moment they are evaluated on a wind
+  direction they were not trained on. Once retrained WITH augmentation
+  (part5 notebook), removing the time-delay window turns out to have
+  almost no cost at all (window=1 with augmentation: 5.33/6.35 deg,
+  matching window=4's 5.55/6.39 deg) — so "no time-delay embedding" is a
+  genuinely defensible simplification once augmentation is present, it
+  was just not tested that way in Part 1. "No rotation augmentation"
+  remains the one ablation that is NOT defensible under any framing —
+  augmentation is required for the model to generalize across wind
+  directions at all.
+
+  - Thrust ablation costs nothing (in fact scores marginally better):
+    directly answers the circularity concern raised by Reviewer #1 and #3
+    — accuracy does not depend on having thrust as an input.
+  - The ANN now clearly beats every regression/direction baseline by a
+    real margin (the broken-data run did not show this — this is the
+    first analysis that actually justifies using a neural network here).
+  - Why is the full-feature ANN (5.55 deg) worse than the thrust-ablated
+    one (4.95 deg), given both are trained identically (grouped split,
+    grouped CV, WITH rotation augmentation) and differ only in whether
+    thrust/thrust_angle are inputs? Evidence points to mild overfitting
+    rather than a fluke: the full model's OWN grouped grid-search CV
+    score was BETTER than the thrust-ablated model's CV score (-0.059 vs
+    -0.066, higher is better), yet it is WORSE on the true held-out test
+    set — a reversal that is a classic overfitting signature. Thrust is a
+    second-derivative-based, differentiation-noisy feature with
+    near-zero raw linear correlation to heading (OLS linear-thrust-alone
+    R^2 = 0.000) and is also the exact feature the label-construction
+    procedure uses to break ties — a plausible combination of "noisy
+    feature" and "residual label-construction shortcut" that a
+    fixed-capacity, fixed-epoch-budget network can latch onto during
+    training without it paying off on genuinely held-out trajectories.
+    Effect size is modest (~0.6 deg) and CIs are close to touching, so
+    report this as a real, direction-consistent, modest effect — not a
+    dramatic one.
+  - IMPORTANT CORRECTION, added after checking rotation generalization
+    (part4 notebook, see below): the "ANN, no rotation augmentation"
+    variant's apparent edge over the full model (4.95 deg vs 5.55 deg) is
+    NOT a third instance of "simpler is better" alongside thrust-ablation
+    — it is overfitting to the single real wind direction in this
+    dataset, and should not be grouped with the thrust-ablation finding.
+    See the ROTATION AUGMENTATION section below.
+
+ITEMS 7-11 (Strongly recommended) — headline findings:
+
+  - Item 7 (raw vs. smoothed): raw 5.55 deg -> sigma=1 5.36 deg ->
+    sigma=2 (production default) 5.33 deg -> sigma=4 5.74 deg. Smoothing
+    helps modestly and non-monotonically; production's sigma=2 choice is
+    reasonable. Boundary-frame padding (repeating the first prediction)
+    was confirmed to affect only the qualitative overlay plots, never any
+    reported metric — `collect_offset_rows` drops incomplete windows
+    rather than padding them, in every embedded table used for evaluation.
+  - Item 8 (correction sensitivity): with the corrected convex-opt
+    function, results are now robust to alpha2 — 0.0 deg median label
+    shift and near-zero change in apparent model accuracy across
+    alpha2 in {1,2,5,10,20}. This is a genuine improvement over the
+    previously-buggy version (which was fragile at large alpha2) and is
+    a clean, positive thing to report. Full parameter table (naive-
+    correction settings, alpha1/alpha2, filtering threshold = pi/2, min
+    trajectory length = 12 frames, Savitzky-Golay settings for smoothing
+    and for acceleration/thrust) is in Part 2, Section 4. NOT resolved:
+    whether these parameters were chosen before or after looking at test
+    trajectories — this is a procedural question about the original
+    (pre-this-response) workflow that cannot be answered from the repo
+    alone and needs a direct answer from whoever ran the original
+    preprocessing.
+  - Item 9 (wind-speed generalization): leave-one-wind-speed-out gives
+    5.39 / 5.34 / 6.11 deg for held-out 0.3/0.4/0.6 m/s — close to the
+    5.55 deg in-distribution baseline, i.e. essentially no generalization
+    gap. Ordinary-split stratification by wind speed is also fairly even
+    (5.79 / 5.64 / 5.18 deg).
+  - Item 9 (directional stratification) — IMPORTANT, see below.
+  - Item 10 (dataset flow table): 4,553 raw trajectories (parquet) ->
+    3,339 after body-orientation join + 12-frame minimum -> 2,338 final
+    (1,001 removed, 30% rejected, at the pi/2 residual-jump filter).
+    Full table with frame counts at every stage in Part 2, Section 3.
+  - Item 11 (uncertainty/OOD): a 4-seed ensemble's agreement (mean
+    resultant length) is well-calibrated — median error drops cleanly
+    from ~7-8 deg (lowest-agreement quartile) to ~4 deg (highest). The
+    external David-lab dataset is NOT flagged more often than our own
+    held-out test set by a simple 1st-99th-percentile input-range check
+    (4.8% vs 21.4%) — report this honestly: it means this specific check
+    does not catch whatever else differs about that dataset (species,
+    camera, behavioral context), so the "arbitrary trajectories" claim
+    still needs narrowing on those grounds even though this check passed.
+
+DOWNWIND/UPWIND/CROSSWIND — the key finding, now fully resolved:
+
+  The manuscript's exact wording ("flies were headed downwind") is
+  ambiguous between two conventions: true body heading vs. direction of
+  travel (groundspeed direction). Both were computed, for all 24 models/
+  baselines evaluated (see part3 notebook and
+  pipelinedata/reviewer_response/directional_breakdown_by_{heading,travel_direction}.csv).
+  Under EITHER convention, for EVERY model tested, downwind is the
+  EASIEST regime, not the hardest — directly contradicting the
+  manuscript's claim:
+
+      Model                          Upwind        Crosswind     Downwind
+      ANN (full features)         5.8/8.1 deg    11.8/8.7 deg   5.1/4.4 deg
+      ANN (thrust-ablated)        5.4/7.4 deg    10.4/8.2 deg   4.6/4.0 deg
+      OLS (linear): ground       47.5/34.5 deg   28.6/15.3 deg  4.4/3.8 deg
+      OLS (circular): ground    112.5/75.7 deg   30.1/26.5 deg  5.2/3.7 deg
+      OLS (linear): thrust      169.7/115.4 deg  63.1/41.8 deg  8.9/7.0 deg
+      Baseline: thrust direction 33.2/28.7 deg   38.4/22.4 deg 12.5/11.0 deg
+      (heading-convention / travel-direction-convention)
+
+  Mechanistic explanation: wind blows toward -x (CLAUDE.md convention).
+  A fly flying upwind is fighting the wind, so its groundspeed can shrink
+  toward zero as thrust nearly cancels the headwind — and a near-zero
+  vector's ANGLE is numerically unstable (dividing near-zero components),
+  which is exactly why groundspeed/thrust-dependent baselines blow up to
+  100+ degrees specifically upwind. Downwind, groundspeed and airspeed
+  reinforce rather than cancel, so direction is well-determined. This is
+  a real, mechanistically-explicable, dataset-wide effect — not noise,
+  not a data-quality artifact of the previously-broken pipeline, and not
+  resolved by picking one classification convention over the other.
+  The ANN is comparatively robust to this (it never blows up to 100+
+  degrees the way the simple baselines do) but is still measurably worse
+  upwind/crosswind than downwind. This needs to be addressed directly in
+  the response letter and probably in the manuscript text — either the
+  downwind claim needs to be corrected to an upwind claim, or there is a
+  difference in what the original authors meant by "downwind" that has
+  not been identified from the repository alone.
+
+ROTATION AUGMENTATION — does it actually help generalization? (follow-up
+check, notebooks/model_training_based_on_reviewer_feedback_part4_rotation_generalization.ipynb):
+
+  The Part 1 finding that "ANN, no rotation augmentation" (4.95 deg) beats
+  the full model (5.55 deg) is measured entirely on the held-out test set,
+  which is drawn from the SAME real wind-tunnel data as training — i.e.
+  the same single, fixed lab-frame wind direction throughout. Rotation
+  augmentation's whole purpose is to trade a little in-distribution
+  accuracy for the ability to generalize to a DIFFERENT wind direction —
+  a same-distribution test set cannot see that trade-off by construction.
+  This was checked directly: the held-out test trajectories were rotated
+  to 8 evenly-spaced wind directions never seen in training (0/45/.../315
+  degrees), and model_full, model_no_aug, and model_abl (thrust-ablated,
+  also trained WITH augmentation) were each evaluated at every rotation.
+
+      Model                                    At 0 deg   Mean +/- std across all 8 rotations
+      ANN, full (trained WITH augmentation)     5.55 deg   6.39 +/- 0.44 deg
+      ANN, thrust-ablated (WITH augmentation)   4.95 deg   6.00 +/- 0.66 deg
+      ANN, NO rotation augmentation             4.95 deg   14.11 +/- 4.74 deg
+      ANN, no time-delay embedding              4.96 deg   27.59 +/- 10.93 deg (peaks at 37.5 deg)
+
+  Rotation augmentation is doing exactly what it is supposed to: the two
+  augmented models stay in a tight band across all 8 unseen rotations
+  (std under 0.7 deg), while the non-augmented models — despite winning
+  at the one real wind direction — degrade sharply the moment the wind
+  direction changes at all. This second check was necessary because
+  `model_no_embed`'s own training set was ALSO built with
+  `wind_augment=False` (same confound as `model_no_aug`, even though its
+  ablation is nominally about time-delay embedding, not augmentation) —
+  and it turns out to be the LEAST rotation-robust of all four models,
+  worse even than "no augmentation" (std 10.93 deg vs 4.74 deg).
+  CONCLUSION (as first stated): neither "ANN, no rotation augmentation"
+  NOR "ANN, no time-delay embedding" should be reported as evidence that
+  those features/mechanisms are unnecessary, since neither was evaluated
+  under any wind direction other than the one training used. Only the
+  thrust-ablation finding survives this correction (both the full and
+  thrust-ablated models were trained WITH augmentation and are both
+  comparably rotation-robust: std 0.44 vs 0.66 deg) — "thrust costs
+  nothing" still stands as a clean, unconfounded simplification result.
+  Full table: pipelinedata/reviewer_response/rotation_generalization_check.csv.
+
+  FOLLOW-UP, WINDOW-SIZE SWEEP (corrects the paragraph above regarding
+  time-delay embedding specifically) — notebooks/model_training_based_on_reviewer_feedback_part5_window_size_sweep.ipynb:
+  the reasoning above ("removing the window roughly doubles the
+  no-augmentation degradation, so embedding must independently matter")
+  turned out to be wrong. Training a model at EVERY window size in
+  {1,2,3,4,5,6,8,10} WITH rotation augmentation (same architecture as
+  the full model, removing the augmentation confound entirely) gives:
+
+      Window   Real-direction   Rotation mean +/- std
+      1 (6 inputs)   5.33 deg     6.35 +/- 0.82 deg
+      2              5.37 deg     6.41 +/- 0.80 deg
+      3              4.89 deg     6.14 +/- 0.53 deg   <- best on both metrics
+      4 (paper's choice, 24 inputs)  5.55 deg  6.39 +/- 0.42 deg
+      5              5.18 deg     6.72 +/- 1.10 deg
+      6              5.08 deg     6.60 +/- 0.68 deg
+      8              5.50 deg     6.76 +/- 0.96 deg
+      10 (60 inputs) 5.72 deg     7.30 +/- 0.99 deg   <- worst on both metrics
+
+  Once augmentation is present, window size barely matters: window=1 (a
+  single current frame, 6 inputs) is statistically indistinguishable from
+  window=4 on both real-direction accuracy and rotation-robustness, and
+  window=3 is marginally the best choice tested on both metrics
+  simultaneously. Larger windows (8, 10) are mildly WORSE on both metrics,
+  consistent with extra lagged, noisy, redundant features adding more
+  noise than signal (the same story already used to explain the
+  thrust-ablation result). Full table:
+  pipelinedata/reviewer_response/window_size_sweep.csv.
+
+  NOTE (window=1 IS "no time-delay embedding", not merely similar to it):
+  `collect_offset_rows` at w=1 produces exactly one column per input
+  variable, an unshifted copy of the current frame - there is no lag, no
+  history. "ANN, no time-delay embedding" (Part 1) and "window=1" (this
+  sweep) are the identical model; the finding above is the literal claim
+  that dropping the time-delay embedding entirely costs nothing, not an
+  approximation of it.
+
+  MULTI-SEED FOLLOW-UP (is window=3's single-seed edge real?) —
+  notebooks/model_training_based_on_reviewer_feedback_part6_window_multiseed.ipynb:
+  windows {1, 3, 4} were each retrained at 4 seeds (42, 7, 13, 99, the
+  same seeds used throughout this response) to check whether window=3's
+  apparent edge survives seed variability, given that Part 1's own
+  multi-seed check on window=4 already showed +/-0.21 deg spread from
+  initialization alone - comparable to the window=3-vs-others gap.
+
+      Window   Real-direction (mean +/- std, 4 seeds)   Rotation-mean (mean +/- std, 4 seeds)
+      1              5.16 +/- 0.37 deg                       6.50 +/- 0.24 deg
+      3              5.88 +/- 1.31 deg                       7.20 +/- 1.92 deg
+      4 (paper's)    5.35 +/- 0.22 deg                       6.33 +/- 0.04 deg
+
+  RESULT: window=3's single-seed advantage in the sweep was noise, not a
+  real effect - one of its 4 seeds (seed=13) landed at 7.80/10.08 deg, a
+  clear outlier versus its other three seeds (4.89-5.57/6.14-6.29 deg),
+  and that one bad run is what drags window=3's cross-seed mean and std
+  above both window=1 and window=4. Windows 1 and 4 are both tight and
+  stable across all 4 seeds and their ranges overlap almost completely.
+  FINAL CONCLUSION: window size does not matter between 1 and 4. Time-
+  delay embedding does NOT independently contribute meaningful accuracy
+  or rotation-robustness once augmentation is controlled for - a single
+  current frame of kinematics carries essentially all the recoverable
+  signal, and this is now confirmed across seeds, not just a single
+  favorable run. The manuscript's window=4 choice is a reasonable, stable
+  choice (not measurably worse than the alternatives) but not uniquely
+  necessary - window=1 would be an equally defensible, far simpler
+  choice, and this is worth stating plainly rather than implying window=4
+  was tuned for a reason the data supports. Full table:
+  pipelinedata/reviewer_response/window_size_multiseed_check.csv.
+
+STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
+frame-count numbers, correcting the funding statement (verified exact
+text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
+the NSF AI Institute in Dynamics (2112085 to F.v.B.)") and the data/code
+availability statement (verified exact text: "Data and code will be made
+available upon publication"), and narrowing the "arbitrary free-flight
+trajectories" claim. None of these are code changes; they require editing
+the actual manuscript text, which does not live in this repository.

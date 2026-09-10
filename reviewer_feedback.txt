@@ -1,0 +1,362 @@
+Reviewer's Responses to Questions
+Comments to the Author
+
+1. Is the manuscript technically sound, and do the data support the conclusions?
+
+The manuscript must describe a technically sound piece of scientific research with data that supports the conclusions. Experiments must have been conducted rigorously, with appropriate controls, replication, and sample sizes. The conclusions must be drawn appropriately based on the data presented.
+Reviewer #1: Yes
+Reviewer #2: Yes
+Reviewer #3: Partly
+
+2. Has the statistical analysis been performed appropriately and rigorously?
+Reviewer #1: No
+Reviewer #2: Yes
+Reviewer #3: No
+
+3. Have the authors made all data underlying the findings in their manuscript fully available?
+
+The PLOS Data policy requires authors to make all data underlying the findings described in their manuscript fully available without restriction, with rare exception (please refer to the Data Availability Statement in the manuscript PDF file). The data should be provided as part of the manuscript or its supporting information, or deposited to a public repository. For example, in addition to summary statistics, the data points behind means, medians and variance measures should be available. If there are restrictions on publicly sharing data—e.g. participant privacy or use of data from a third party—those must be specified.
+Reviewer #1: Yes
+Reviewer #2: Yes
+Reviewer #3: Yes
+
+4. Is the manuscript presented in an intelligible fashion and written in standard English?
+
+PLOS ONE does not copyedit accepted manuscripts, so the language in submitted articles must be clear, correct, and unambiguous. Any typographical or grammatical errors should be corrected at revision, so please note any specific errors here.
+Reviewer #1: Yes
+Reviewer #2: Yes
+Reviewer #3: Yes
+
+5. Review Comments to the Author
+
+Please use the space provided to explain your answers to the questions above. You may also include additional comments for the author, including concerns about dual publication, research ethics, or publication ethics. (Please upload your review as an attachment if it exceeds 20,000 characters)
+
+Reviewer #1: 
+This manuscript presents an artificial neural network for estimating Drosophila yaw orientation from translational trajectory variables. The practical motivation is clear: many insect-flight datasets contain center-of-mass trajectories but lack direct body-orientation measurements. The manuscript is generally well written, the proposed software tool may be useful, and the authors appropriately discuss several limitations of applying the model outside the experimental conditions represented in the training data.
+
+However, the current evaluation contains important risks of target circularity and train-test leakage. These issues affect the central quantitative result—the reported angular error—and must be resolved before the conclusions can be supported.
+
+Major comments
+
+1. The target heading is partly constructed from a feature later used to predict it.
+
+The raw camera-derived body orientation is ambiguous modulo π. To resolve this ambiguity, the authors use inferred thrust direction in both the initial heuristic and the mixed-integer optimization. The neural network is then trained using thrust magnitude and thrust angle among its input variables.
+
+This creates a potentially circular evaluation. The corrected target is not independent of the predictor variables: the correction procedure explicitly selects the orientation that aligns with thrust, especially when thrust is large. A model receiving thrust angle as input may therefore learn, at least partly, the rule used to construct its labels rather than recover independently measured body orientation.
+
+This concern is particularly important because the optimization objective directly penalizes disagreement between corrected heading and thrust direction. The authors’ interpretation that the network infers body orientation from translational dynamics is consequently difficult to separate from the possibility that it reproduces the thrust-based correction prior.
+
+The authors should quantify this circularity through additional experiments:
+
+Evaluate against a subset of frames or trajectories for which the anterior-posterior body direction can be determined independently from image information, manual annotation, asymmetric body features, or another measurement not based on thrust.
+Train and test models without thrust-derived inputs.
+Compare the ANN against the heading produced directly by the correction prior, including thrust direction alone and the complete heuristic or optimization-based estimator.
+Report performance separately for frames in which the raw ellipse orientation is unambiguous or can be independently disambiguated.
+Perform sensitivity analyses over the ratio α
+2
+​
+
+/α
+1
+​
+
+used in label correction and determine whether ANN accuracy changes as the target is forced to align more strongly with thrust.
+
+Until an independent validation is provided, the output should be described as an estimate consistent with the authors’ biomechanical prior, not as validated recovery of true body orientation.
+
+2. The train-test splitting procedure appears vulnerable to severe leakage.
+
+The manuscript states that delay-embedded feature-target pairs were randomly divided using a 67:33 split. It does not state that complete trajectories, individual flies, recording sessions, or experiments were assigned exclusively to training or test sets.
+
+Randomly splitting frames is inappropriate for temporally correlated trajectory data. Consecutive examples use overlapping windows of four time points, so neighboring samples may share most of their input values. If adjacent windows from the same trajectory occur in both sets, the test samples are not statistically independent of the training data. The model may also exploit trajectory-specific wind conditions, spatial regions, or behavioral patterns.
+
+All preprocessing, model selection, cross-validation, and final testing should be repeated with grouped splits at the complete-trajectory level. If animal identities or recording sessions are available, a stronger evaluation should hold out animals or sessions. Grouped cross-validation such as GroupKFold should be used during hyperparameter selection, with the group identifier never divided across folds.
+
+The manuscript should explicitly report:
+
+The number of trajectories in each training, validation, and test partition.
+Whether multiple trajectories came from the same fly.
+The number of flies, recording sessions, and experimental trials.
+The grouping variable used for splitting.
+Whether all frames from a trajectory remain in one partition.
+
+3. Rotation augmentation may introduce additional duplication across evaluation sets.
+
+The manuscript constructs an unaugmented dataset and a randomly rotated copy and then states that the same random split was applied to both versions. The precise sequence of splitting, augmentation, and concatenation is unclear.
+
+Augmentation must occur only after trajectories have been assigned to training, validation, and test partitions. Rotated versions of a training trajectory must never appear in validation or test data, and the unrotated and rotated forms of a test trajectory should not be treated as independent test observations.
+
+Please provide pseudocode or a flow diagram showing exactly when trajectory splitting, delay embedding, augmentation, concatenation, cross-validation, and final evaluation occur. The safest procedure is:
+
+Divide complete original trajectories into grouped train, validation, and test sets.
+Fit all preprocessing choices using training trajectories only.
+Apply augmentation only to the training trajectories.
+Evaluate once on untouched, nonaugmented held-out trajectories.
+
+4. The baseline evaluation is insufficient.
+
+The paper visually compares ANN estimates with ground-velocity direction but does not provide quantitative performance for simple or mechanistically motivated baselines. It is therefore unclear how much improvement is attributable to the neural network.
+
+Please report mean, median, quantiles, and trajectory-level errors for at least:
+
+Ground-velocity direction.
+Air-velocity direction.
+Thrust direction.
+The naive heading-correction heuristic.
+The convex-optimization correction output or an applicable trajectory-only version of that estimator.
+A linear or circular regression model using the same inputs.
+A persistence model based on the previous estimated heading, where applicable.
+
+Because the label-correction procedure itself uses thrust, comparison with thrust direction is essential.
+
+5. Statistical independence and uncertainty are not handled appropriately.
+
+The manuscript reports errors over 21,129 frames. Frames within a trajectory are strongly autocorrelated and should not be treated as 21,129 independent observations. Confidence intervals calculated or interpreted at the frame level would be artificially narrow.
+
+The primary unit of replication should be the trajectory, animal, or recording session. Please report:
+
+The distribution of median or mean angular error across held-out trajectories.
+Median, interquartile range, and bootstrap confidence intervals obtained by resampling complete trajectories or animals.
+The number and proportion of trajectories exceeding practically meaningful error thresholds.
+Results from several independently initialized training runs.
+
+A trajectory-level cumulative distribution or box/violin plot would be more informative than only a frame-density plot.
+
+6. The reported result is inconsistent between the abstract and Results section.
+
+The abstract states a median error of approximately 5
+∘
+. The Results section gives 4.9
+∘
+for the unaugmented test data and 5.8
+∘
+for the rotation-augmented test data. Because the manuscript appears to present the rotation-augmented model as the principal estimator, the abstract should state the corresponding result precisely and identify the evaluation condition.
+
+The terms “unaugmented test data” and “rotation-augmented test data” are also potentially confusing. Ordinarily the test set should remain unaugmented. Please clarify whether these terms refer to models trained with different datasets, test trajectories subjected to coordinate rotations, or both.
+
+7. Generalization across wind conditions should be directly tested.
+
+The dataset includes three wind speeds: 0.3, 0.4, and 0.6 m/s. A random pooled split does not demonstrate that the method generalizes to unseen wind regimes.
+
+Please conduct leave-one-wind-speed-out experiments, training on two wind speeds and testing on the third. Performance should also be reported separately for each speed and for upwind, crosswind, and downwind flight. The manuscript already observes that errors are concentrated in downwind segments; this should be quantified rather than discussed only qualitatively.
+
+Suggested stratified analyses include error as a function of:
+
+Airspeed.
+Ground speed.
+Thrust magnitude.
+Angular velocity or turning rate.
+Slip angle.
+Wind speed.
+Upwind/downwind orientation.
+Distance from the center of the camera field.
+
+8. The heading-correction procedure requires validation and fuller reporting.
+
+The values of α
+2
+​
+
+, the residual jump-removal threshold, the Savitzky-Golay window length and polynomial order, and the sliding-window unwrapping parameters are not reported in the manuscript. Stating that these were tuned by visual inspection is not sufficiently reproducible and may introduce subjective selection.
+
+Please provide every numerical parameter in the Methods section or a clearly referenced configuration file. The authors should also report:
+
+How many trajectories were excluded at each preprocessing stage.
+The percentage of frames whose orientation was shifted by π.
+The percentage of trajectories requiring optimization after the naive correction.
+Inter-annotator or manual-validation results for a random subset.
+Whether filtering parameters were chosen before examining test trajectories.
+
+The phrase “mixed-integer convex optimization” should also be used carefully. A problem with integer variables is a mixed-integer convex program, but it is not a convex optimization problem in the ordinary continuous sense. The formulation and solver settings should be described accordingly.
+
+9. The relationship between trajectory count and sample count needs clarification.
+
+The abstract states that the model was trained on 2,340 trajectories, while the Results section reports 64,026 total frames after processing. This corresponds to a relatively small average number of usable frames per trajectory. Please provide a dataset-flow table containing:
+
+Initial number of trajectories and frames.
+Number removed for being shorter than 0.12 s.
+Number removed because correction failed.
+Final number of trajectories and frames.
+Distribution of trajectory duration.
+Numbers assigned to training, validation, and testing.
+
+It should also be clarified whether “2,340 trajectories” refers to all retained trajectories or only training trajectories.
+
+10. Evaluation should distinguish raw network output from post-processed output.
+
+An optional Gaussian smoothing filter is applied to predictions. It is unclear whether the reported errors use raw ANN outputs or smoothed predictions. Smoothing can improve frame-level error and uses neighboring time points, so it is part of the estimator and must be evaluated explicitly.
+
+Please report results for:
+
+Raw ANN output.
+Gaussian-smoothed output.
+Different smoothing values.
+Boundary frames for which the first predicted value is repeated.
+
+Repeating the first available prediction for the initial W−1 frames is a convenient alignment choice but is not a genuine prediction. Those frames should either be excluded from accuracy calculations or reported separately.
+
+11. The model-selection procedure should be made leakage-safe and fully reproducible.
+
+GridSearchCV with ordinary three-fold cross-validation will divide correlated frames unless a grouped splitter was supplied. This must be replaced with grouped cross-validation. The internal Keras validation split should also avoid randomly separating windows from the same trajectory.
+
+Please report random seeds, software versions, learning rate, weight initialization, early-stopping procedure, selected epoch, regularization, and whether feature variables were standardized. It is also unclear whether each grid-search model was trained for exactly 150 epochs regardless of validation behavior.
+
+12. The claim regarding application to arbitrary trajectories is too broad.
+
+The Introduction states that the model generates plausible estimates for “arbitrary free-flight trajectories.” The training data come from one laboratory wind-tunnel dataset, one species, three wind speeds, and only the camera-visible portions of trajectories. The Discussion acknowledges these limitations appropriately, but earlier claims should be narrowed.
+
+The authors should state that applicability is presently demonstrated only for trajectories sufficiently similar to the training distribution. Ideally, the prediction wrapper should detect out-of-distribution inputs or return a confidence/uncertainty estimate.
+
+13. Uncertainty estimates would make the tool substantially safer and more useful.
+
+Because the model sometimes fails in kinematically ambiguous conditions, users need a way to identify unreliable predictions. Please consider providing prediction confidence through an ensemble, bootstrap models, Monte Carlo dropout, or a calibrated error model based on local kinematic conditions. At minimum, the software documentation should warn users when airspeed, thrust, or other inputs fall outside the training range.
+
+14. Data, code, funding, and submission-form statements are inconsistent.
+
+The submission form states that data are available through a Dryad reviewer link and code is publicly available on GitHub, whereas the manuscript states that data and code “will be made available upon publication.” These statements should be reconciled. At acceptance, the data should have a permanent public URL or DOI and include the corrected orientation targets, raw orientation measurements where sharing is permitted, trajectory group identifiers, predefined splits, and all preprocessing parameters.
+
+The submission form states that the authors received no specific funding, but the manuscript lists support from NIH BRAIN and the NSF AI Institute in Dynamics. The financial disclosure must be corrected and should identify the funded author, grant numbers, funders, and the funders’ roles.
+
+15. Reuse of previously unpublished body-orientation data should be documented clearly.
+
+The translational trajectory data were previously published, whereas the manuscript states that body orientations were not made public. Please clarify ownership and provenance of those measurements, whether all authors or data custodians authorized their reuse and release, and whether the newly deposited dataset includes the original ellipse parameters and processed headings.
+
+The manuscript should also distinguish clearly between the previously published dataset and the newly generated processed labels and model outputs.
+
+Minor comments
+
+Define whether “heading,” “body yaw,” and “body orientation” are used interchangeably.
+Clarify the reference frame and angular convention, including zero direction and positive rotation.
+Explain how angular differences are wrapped when evaluating mean absolute angular error.
+State how acceleration is numerically differentiated and filtered, because thrust may be highly sensitive to noise.
+Report the mass, density, area, and drag-coefficient values directly rather than only referring readers to a notebook.
+Clarify whether the drag model uses vector direction or only scalar v
+a
+2
+​
+
+, and provide the complete vector equation.
+State how zero-magnitude velocity or thrust vectors are handled when calculating angles.
+Correct minor typography problems caused by broken words and mathematical line wrapping.
+Consider replacing “correctly estimates” in the Figure 2 title with a neutral description such as “estimates,” since the figure alone does not establish correctness.
+Report model size, training time, and inference speed.
+
+Conclusion
+
+The problem is worthwhile and the manuscript could become a useful methods and software contribution. Nevertheless, the principal accuracy estimate is not yet convincing because the corrected targets use thrust information that is also supplied to the model, and because the apparent frame-level random split permits overlap and temporal dependence between training and test data. A complete trajectory-grouped reanalysis, independent validation of the corrected headings, quantitative baseline comparisons, and trajectory-level uncertainty estimates are required.
+
+
+
+
+
+
+
+
+
+Reviewer #2: 
+
+
+Observations
+
+1. The train/test split appears vulnerable to severe temporal leakage
+
+This is my most important concern.
+
+The manuscript says:
+
+“The dataset of feature–target pairs was split into training and withheld test sets (67-33 split).”
+
+The delay embedding uses a four-frame backward window, so consecutive training examples necessarily share most of their input observations.
+
+If the split was performed randomly over individual feature-target pairs, frames from the same trajectory will occur in both training and test sets. Because the data are sampled at 0.01 s and the input windows overlap heavily, the network may effectively see almost the same trajectory segment during training and testing.
+
+This is particularly problematic because the paper describes performance as being evaluated on a “withheld test set,” which may give the impression of an independent test set.
+
+I strongly recommend that the authors clarify exactly what was randomized. If the split was frame-level, the analysis should be repeated with splitting performed at the trajectory/fly level.
+
+The manuscript needs stronger baseline models
+
+The paper demonstrates that the ANN works, but it does not adequately establish that an ANN is necessary.
+
+The authors already show that ground velocity is an imperfect proxy and that air velocity is more closely associated with heading.
+
+However, the relevant question is:
+
+Does the ANN provide substantially better prediction than simpler models?
+
+I would expect at least the following baselines:
+
+ground-velocity direction;
+air-velocity direction;
+thrust direction;
+perhaps a weighted combination of air velocity and thrust;
+a simple linear/circular regression model;
+ANN without time-delay embedding;
+ANN without rotational augmentation;
+ANN without thrust features.
+
+The current comparison mainly demonstrates ANN predictions versus ground velocity and reports the ANN's angular error. That is insufficient to establish the added value of the proposed architecture.
+
+2. The hyperparameter-selection procedure may also contain leakage
+
+The authors use GridSearchCV with three-fold cross-validation to select the architecture. However, if the observations are individual temporally correlated feature-target pairs, the same problem described above also applies to the cross-validation folds.
+
+Adjacent windows from the same trajectory could appear in different folds.
+
+The cross-validation should therefore also be grouped by trajectory/fly, rather than ordinary random K-fold cross-validation.
+
+The authors should specify exactly how GridSearchCV was configured and whether groups were supplied.
+
+3. The ground-truth correction procedure requires validation
+
+The authors state that α₂/α₁ was tuned “by visual inspection” using trajectories containing clear saccades and rapid turns.
+
+This is not sufficiently reproducible.
+
+Please provide:
+
+the range of α₂ values tested;
+the final selected value;
+objective criteria for selection;
+whether the same trajectories used for tuning were subsequently used for ANN training/testing;
+a sensitivity analysis showing how the corrected heading changes across plausible α₂ values.
+
+Because this corrected signal becomes the ANN target, this preprocessing step is effectively part of the experimental methodology and requires rigorous validation.
+
+
+
+Essential
+Redo the evaluation using trajectory-/fly-level splitting.
+Ensure no overlapping temporal windows occur between training and test sets.
+Use grouped cross-validation for architecture selection.
+Demonstrate that rotational augmentation does not leak information across splits.
+Address the circularity introduced by using thrust to correct the target while also using thrust as an ANN predictor.
+Provide an independent validation of the corrected orientation target, preferably against manually/independently resolved orientation.
+Include meaningful baseline models.
+Report error distributions and performance stratified by relevant flight conditions.
+Strongly recommended
+Quantify sensitivity to the orientation-correction parameter α₂.
+Report pre- and post-Gaussian-filter performance.
+Clarify the aerodynamic thrust calculation.
+Provide detailed trajectory/fly/wind-speed counts.
+Make the terminology distinguishing measured orientation, corrected orientation, and predicted orientation explicit.
+Moderate claims concerning generalization to field data and arbitrary trajectories.
+
+Reviewer #3: 
+1. Circularity in Label Generation & Feature Leakage:
+Re-train the ANN after excluding all thrust-derived features from the input vector. Compare its performance directly against the full feature model to prove the network is not merely mimicking Equation.
+2. Flawed Validation Split & Unvalidated Extrapolation:
+Re-evaluate the model using Leave-One-Trajectory-Out (LOTO) cross-validation to eliminate frame-to-frame data leakage caused by time-delay embedding.
+
+
+Reviewer Identities
+6. PLOS authors have the option to publish the peer review history of their article (what does this mean?). If published, this will include your full peer review and any attached files.
+
+
+If you choose “no”, your identity will remain anonymous but your review may still be made public.
+
+
+Do you want your identity to be public for this peer review? For information about this choice, including consent withdrawal, please see our Privacy Policy.
+Reviewer #1: Yes: Mohamed Elhaj Abdou
+Reviewer #2: Yes: Chandrasekar Arumugam
+Reviewer #3: No
