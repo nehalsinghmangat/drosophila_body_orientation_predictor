@@ -786,6 +786,53 @@ DIRECTION REGIME? (follow-up, notebooks/model_training_based_on_reviewer_feedbac
   show it. Full data:
   pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv.
 
+WHY DON'T THE POOLED SUMMARY STATISTICS SHOW THE REGIME-SPECIFIC SUPERIORITY?
+(follow-up, notebooks/model_training_based_on_reviewer_feedback_part12_why_pooled_stats_hide_regime_effect.ipynb):
+
+  Direct follow-up to Part 11: if the ANN beats the augmented-fit OLS baseline
+  by 8-14 deg in the upwind/crosswind regimes, why does the pooled comparison
+  (Part 10) only show a ~0.9 deg margin? Checked whether this is a real
+  statistical mechanism (regime imbalance interacting with a median statistic)
+  rather than some inconsistency between Part 10 and Part 11.
+
+  STEP 1 - do individual trajectories spend most of their OWN frames downwind?
+  Yes: median trajectory is 98% downwind by heading convention (73% of
+  trajectories are majority-downwind), 57% downwind by travel-direction
+  convention (53% majority-downwind).
+
+  STEP 2 - splitting trajectories by their own downwind fraction reproduces
+  both halves of the story directly:
+
+      Group (heading convention)          ANN      OLS(aug-fit)   Gap
+      Majority-downwind (73% of traj.)    5.12 deg   4.41 deg     OLS better by 0.71 deg
+      NOT majority-downwind (27%)         6.96 deg  21.59 deg     ANN better by 14.63 deg
+
+      Group (travel-direction convention) ANN      OLS(aug-fit)   Gap
+      Majority-downwind (53% of traj.)    4.51 deg   2.89 deg     OLS better by 1.61 deg
+      NOT majority-downwind (47%)         7.64 deg  16.27 deg     ANN better by 8.63 deg
+
+  STEP 3 - statistic-choice check: median-of-medians (Part 10's statistic)
+  gives a 0.92 deg gap; mean-of-medians gives 2.60 deg; mean-of-means gives
+  2.23 deg. Same underlying per-frame errors, different pooling statistic,
+  different apparent gap - because a median is specifically insensitive to
+  a minority subgroup, and the ANN's advantage lives in a minority subgroup
+  (27-47% of trajectories, depending on convention).
+
+  RESULT: no inconsistency. The pooled ~0.9 deg margin is not an average that
+  includes the 8-14 deg regime effect and dilutes it - it is a statistic
+  computed almost entirely from the majority-downwind subgroup, where OLS ties
+  or slightly beats the ANN, using a summary statistic (median) that is by
+  design nearly blind to whatever happens in the minority subgroup. The
+  trajectory-level median is still the right headline statistic (it is what
+  the reviewers' frame-pooling objection required), but a single pooled number
+  necessarily cannot represent an effect confined to a minority of the data -
+  which is exactly why Part 11's regime-stratified breakdown, not the Part 10
+  pooled number, is the correct evidence for the "the ANN is worth using
+  because it wins where kinematics alone are least informative" claim in the
+  response letter. Full data: reuses
+  pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv (no new
+  data generated - this is a re-aggregation of Part 11's per-frame output).
+
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
 text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
