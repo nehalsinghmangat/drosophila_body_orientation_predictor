@@ -286,6 +286,10 @@ locally-broken run that only retained 718 trajectories):
                                                                           (stratifies both mechanisms by turning rate/thrust —
                                                                            see DO THE TWO "HANDLE DYNAMIC MOMENTS" MECHANISMS
                                                                            section below)
+  notebooks/model_training_based_on_reviewer_feedback_part8_dynamic_correction_visual_check.ipynb
+                                                                          (all 38 raw/naive/convex-opt comparison figures for
+                                                                           dynamic, disagreeing trajectories — see VISUAL CHECK
+                                                                           section below)
 
 Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
@@ -597,6 +601,44 @@ MOMENTS? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part7_d
   thrust magnitude, and insensitive to alpha2 even in dynamic frames. Full
   tables: pipelinedata/reviewer_response/time_delay_by_dynamism.csv,
   convex_opt_by_dynamism.csv, alpha2_sensitivity_by_dynamism.csv.
+
+VISUAL CHECK: RAW VS. NAIVE VS. NAIVE+CONVEX-OPT, FOR DYNAMIC TRAJECTORIES
+WHERE THE CORRECTIONS ACTUALLY DISAGREE (follow-up, notebooks/model_training_based_on_reviewer_feedback_part8_dynamic_correction_visual_check.ipynb):
+
+  Ground truth body orientation was never measured directly in this dataset (only
+  the camera-derived ellipse angle, ambiguous modulo pi) - this is why the
+  naive/convex-opt pipeline exists, and why Part 7's numerical comparison against
+  "the final target" can only measure self-consistency with the pipeline's own
+  later smoothing stage, not true accuracy. This notebook is the direct visual
+  complement: a 3-panel plot (no correction / after naive / after naive+convex-opt)
+  for every one of the 38 held-out test trajectories that are BOTH dynamic
+  (contain a saccade-like turning rate, >=5.72 deg/frame) AND show a real
+  naive-vs-convex disagreement (>90 deg somewhere in the trajectory) - all 38
+  generated and embedded, not a sample, with the exact disagreeing frame(s) marked
+  with a black star on all three panels (a plain visual comparison without this
+  marker made single-frame disagreements very hard to spot by eye, even in
+  cases confirmed by the data to have a full 180-degree flip).
+
+  Direct inspection of 5 representative cases (spanning the full severity range)
+  found:
+  - One clear, convincing win for convex-opt (`20130401_180544_10304`): naive-only
+    correction has one obviously spurious heading arrow pointing backward relative
+    to an otherwise smooth trail; convex-opt removes it entirely.
+  - Several cases where the disagreement is not an isolated blip but spans 29-49
+    consecutive frames concentrated at a single sharp turning point - naive and
+    convex both produce a smooth, plausible-looking trail through the turn, they
+    just disagree about which end is the head for the whole turn, and neither
+    looks obviously wrong by eye. This is not resolvable by visual inspection
+    alone - it is exactly the ground-truth gap that motivated using the
+    convex-opt correction in the first place.
+
+  BOTTOM LINE: convex-opt correction is doing real, visible work in at least some
+  cases (not obviously wrong in any case inspected), but a full accounting needs a
+  human to page through all 38 figures - not just this sample of 5, and not just
+  Part 7's pooled numeric summary. Figures:
+  figures/reviewer_response_part8_dynamic_correction_comparison/*.{svg,png} (38 of
+  each). Trajectory list with severity metrics:
+  pipelinedata/reviewer_response/dynamic_correction_comparison_trajectories.csv.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
