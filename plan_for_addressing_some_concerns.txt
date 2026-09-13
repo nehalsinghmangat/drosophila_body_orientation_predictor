@@ -282,6 +282,10 @@ locally-broken run that only retained 718 trajectories):
   notebooks/model_training_based_on_reviewer_feedback_part6_window_multiseed.ipynb
                                                                           (4-seed replication of windows {1,3,4} — see
                                                                            MULTI-SEED FOLLOW-UP below)
+  notebooks/model_training_based_on_reviewer_feedback_part7_dynamic_moments.ipynb
+                                                                          (stratifies both mechanisms by turning rate/thrust —
+                                                                           see DO THE TWO "HANDLE DYNAMIC MOMENTS" MECHANISMS
+                                                                           section below)
 
 Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
@@ -534,6 +538,65 @@ check, notebooks/model_training_based_on_reviewer_feedback_part4_rotation_genera
   choice, and this is worth stating plainly rather than implying window=4
   was tuned for a reason the data supports. Full table:
   pipelinedata/reviewer_response/window_size_multiseed_check.csv.
+
+DO THE TWO "HANDLE DYNAMIC MOMENTS" MECHANISMS ACTUALLY HELP DURING DYNAMIC
+MOMENTS? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part7_dynamic_moments.ipynb):
+
+  Both `convex_opt_heading_correction` and time-delay embedding are motivated by
+  the same stated rationale: help specifically during rapid turns/saccades/
+  high-force maneuvers. Every prior analysis measured these two mechanisms
+  averaged over a whole test set; this notebook stratifies by a wrap-safe
+  per-frame turning-rate metric (circular_distance of consecutive final-target
+  headings) to test the mechanisms specifically where they claim to matter.
+
+  TIME-DELAY EMBEDDING: no benefit at any dynamism level, including exactly
+  where it was supposed to help. Error rises with turning rate for both models
+  (as expected -- dynamic moments are genuinely harder), but window=4 vs.
+  window=1 stay within 0.04-0.34 deg of each other in every quartile:
+
+      Turning-rate quartile   window=4   window=1
+      Q1 (calmest)             4.79 deg   4.64 deg
+      Q2                       5.08 deg   4.76 deg
+      Q3                       5.82 deg   6.12 deg
+      Q4 (most dynamic)        8.82 deg   9.05 deg
+      Saccade-like (top decile of turning rate)  10.56 deg   10.60 deg
+
+  This closes the obvious follow-up to Parts 5-6's "window size doesn't matter
+  on average" finding, and the answer is no benefit here either: there is no
+  dynamism regime in which time-delay embedding earns its stated purpose.
+
+  CONVEX-OPT CORRECTION: a small, real, but inconsistent benefit -- two
+  stratifications of the same mechanism disagree with each other.
+
+      By turning rate (naive -> convex, deg):     By thrust magnitude (naive -> convex, deg):
+      Q1 (calmest/lowest)   1.28 -> 1.09 (-0.19)   Q1 (lowest thrust)   2.58 -> 1.78 (-0.80)
+      Q2                    1.42 -> 1.24 (-0.18)   Q2                   2.16 -> 1.70 (-0.46)
+      Q3                    1.85 -> 1.63 (-0.22)   Q3                   1.75 -> 1.64 (-0.11)
+      Q4 (most dynamic/highest) 3.70 -> 3.24 (-0.46)  Q4 (highest thrust)  1.29 -> 1.27 (-0.02)
+
+  By turning rate, the benefit grows with dynamism (-0.19 to -0.46 deg) -- modest
+  genuine support for the manuscript's rationale. By thrust magnitude -- the
+  literal variable the correction's weighting term uses -- the pattern reverses:
+  the benefit is largest at LOW thrust and nearly vanishes at HIGH thrust, the
+  opposite of "body heading is most reliably constrained by thrust direction
+  during high-force... maneuvers." (Caveat: the optimization weights by
+  within-trajectory-normalized thrust, not pooled absolute thrust, so this is not
+  a perfectly precise probe of the algorithm's internal logic, but it does show
+  no high-thrust-specific benefit when thrust is measured directly.)
+
+  ALPHA2 SENSITIVITY, DYNAMIC VS. CALM: even in the most dynamic quartile,
+  alpha2 sensitivity remains negligible (3.24-3.27 deg across alpha2 in
+  {1,2,5,10,20}), no more sensitive than the calm quartile (1.091-1.093 deg).
+  The thrust-alignment term is not doing measurably different work as alpha2
+  varies, even where the design rationale says it should matter most.
+
+  BOTTOM LINE: time-delay embedding does not earn its stated purpose at any
+  dynamism level and should not be defended on "it helps during saccades"
+  grounds. Convex-opt correction earns a small, real, but partial and
+  direction-inconsistent benefit -- real by turning rate, absent-to-reversed by
+  thrust magnitude, and insensitive to alpha2 even in dynamic frames. Full
+  tables: pipelinedata/reviewer_response/time_delay_by_dynamism.csv,
+  convex_opt_by_dynamism.csv, alpha2_sensitivity_by_dynamism.csv.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
