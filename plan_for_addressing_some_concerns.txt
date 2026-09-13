@@ -294,6 +294,10 @@ locally-broken run that only retained 718 trajectories):
                                                                           (MAJOR FINDING: attributes the 30% rejection rate to
                                                                            convex-opt, not the filter — see WHY ARE 30% OF
                                                                            TRAJECTORIES REJECTED section below)
+  notebooks/model_training_based_on_reviewer_feedback_part10_ols_rotation_generalization.ipynb
+                                                                          (do OLS baselines generalize across wind directions
+                                                                           too? — see DO THE OLS/CIRCULAR-REGRESSION BASELINES
+                                                                           section below)
 
 Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
@@ -707,6 +711,45 @@ whole response.
   most of the 996 unnecessarily-discarded trajectories. Full data:
   pipelinedata/reviewer_response/rejection_cause_analysis.csv. Figures:
   figures/reviewer_response_part9_*.
+
+DO THE OLS/CIRCULAR-REGRESSION BASELINES ALSO GENERALIZE ACROSS WIND
+DIRECTIONS, OR ONLY THE ANN? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part10_ols_rotation_generalization.ipynb):
+
+  Part 1's OLS/circular baselines were fit on unaugmented data only. If they
+  also collapse across unseen wind directions the way the ANN's own
+  "no augmentation" ablation did (Part 4), "the ANN wins" would partly be an
+  artifact of an unfair comparison (augmented ANN vs. non-augmented baselines).
+  All 14 combos were refit on rotation-augmented training data (mirroring
+  exactly how model_full was trained) and evaluated on the real test set plus
+  the same 8 unseen rotations used in Parts 4-6:
+
+      Model                                             Real dir.   Mean+/-std, 8 rotations
+      ANN, full (augmented, Part 1/4)                    5.55 deg   6.39 +/- 0.44 deg
+      OLS circular (air+ground), augmented-fit           6.47 deg   6.67 +/- 0.23 deg
+      OLS circular (air+ground), unaugmented-fit         6.02 deg   9.15 +/- 2.55 deg
+      OLS linear (thrust+ground), augmented-fit, picked
+        by the real-direction metric alone                5.94 deg   17.70 +/- 7.01 deg (worst)
+
+  RESULT: fitting the SAME simple circular regression (2 physical quantities,
+  air + ground velocity direction only) on augmented data closes almost the
+  entire wind-direction generalization gap with the ANN (6.67 vs 6.39 deg mean,
+  and actually a TIGHTER std than the ANN). Rotation-robustness by itself is
+  therefore NOT a valid reason a neural network is required - a closed-form
+  circular regression achieves it too, given the same augmentation treatment.
+  What survives as a genuine reason to prefer the ANN is a smaller, consistent
+  accuracy margin (~0.5-0.9 deg, present both at the real direction and across
+  rotations), not an inability of simpler models to handle arbitrary wind
+  directions. This meaningfully softens Part 1's original "ANN beats the best
+  OLS baseline by a real margin" framing - the margin is real but smaller and
+  differently justified than it first appeared.
+
+  SECOND, INDEPENDENT CONFIRMATION of Part 6's lesson: selecting a baseline (or
+  hyperparameter) using only the real-direction test set is unsafe. The
+  augmented-fit combo that looked BEST on the real-direction metric alone
+  (`thrust+ground`, linear) was the WORST of all three conditions once
+  evaluated under rotation. Any baseline reported in the manuscript needs to be
+  checked under rotation before being called "the best simple alternative."
+  Full data: pipelinedata/reviewer_response/ols_rotation_generalization.csv.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
