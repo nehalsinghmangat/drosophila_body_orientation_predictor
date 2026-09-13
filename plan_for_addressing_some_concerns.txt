@@ -833,6 +833,58 @@ WHY DON'T THE POOLED SUMMARY STATISTICS SHOW THE REGIME-SPECIFIC SUPERIORITY?
   pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv (no new
   data generated - this is a re-aggregation of Part 11's per-frame output).
 
+IS `groundspeed_angle` THE RIGHT REFERENCE FOR NAIVE HEADING CORRECTION?
+(follow-up, notebooks/model_training_based_on_reviewer_feedback_part13_naive_correction_reference_variable.ipynb):
+
+  Motivated by inspecting one Part 8 trajectory (20130410_185709_5024, a near-hovering
+  19-frame segment, groundspeed 0.04-0.29): naive_heading_correction's final global-flip
+  decision compares the corrected heading's circular mean against groundspeed_angle's
+  circular mean. At near-zero groundspeed, groundspeed_angle is numerically unstable
+  (swings ~200 deg from position noise alone, same degenerate mechanism as Part 3's
+  downwind-easy finding) even though the true body orientation stays rock-solid - so
+  naive incorrectly flips the whole trajectory 180 deg based on a noisy reference.
+  Tested: does using airspeed_angle or thrust_angle instead fix this, at full scale
+  (not just the one trajectory)?
+
+  REJECTION RATE: unaffected. naive(ground_only), naive(air_only), naive(thrust_only) -
+  all three, with NO convex-opt - retain exactly 3334/3339 candidates (same 5 genuinely
+  bad trajectories from Part 9 fail regardless). A wrong global branch choice stays
+  internally smooth (uniformly offset by 180 deg), so it passes the jump-based filter
+  either way - this is a distinct failure mode from Part 9's "convex-opt introduces
+  local jumps" finding, not a variant of it.
+
+  GLOBAL ORIENTATION ACCURACY: this is where the reference variable matters enormously.
+  Across the 2338 trajectories currently used for training:
+      naive(ground) vs naive(air):            12.9 deg mean disagreement
+      naive(ground) vs naive(thrust):         13.8 deg mean disagreement
+      naive(air)    vs naive(thrust):          1.7 deg mean disagreement
+      naive(ground) vs CURRENT FINAL (naive-ground+convex-opt): 13.7 deg
+      naive(air)    vs CURRENT FINAL:           1.6 deg
+      naive(thrust) vs CURRENT FINAL:           0.08 deg  <-- essentially exact match
+
+  Of the 167/2338 trajectories where naive(ground) and naive(air) disagree by >90 deg
+  (i.e. naive(ground) picked the wrong global branch), the pipeline's ACTUAL final
+  answer (after convex-opt runs) sides with air/thrust in 162/167 (97%) of cases, and
+  with naive(ground)'s original guess in only 5/167.
+
+  RESULT: naive_heading_correction using thrust_angle as its reference, with NO
+  convex-opt at all, reproduces the current expensive MOSEK-optimized pipeline's final
+  training labels to within 0.08 deg on average - because convex-opt's actual,
+  measurable contribution in this pipeline is almost entirely just fixing naive(ground)'s
+  bad global-branch choice on ~7% of trajectories, a problem a better reference variable
+  solves directly and for free. Combined with Part 9 (convex-opt is what causes 996 of
+  1001 rejections, not naive), this means: switching naive's reference to thrust_angle
+  (or airspeed_angle - nearly identical, 1.7 deg apart) and dropping convex-opt entirely
+  would reproduce the current 2338-trajectory training set almost exactly AND recover the
+  996 wrongly-rejected trajectories (2338 -> up to 3334), while removing the MOSEK
+  dependency from the pipeline altogether. This is now a clean, well-evidenced case for
+  the "no convex-opt" decision the user was already leaning toward - not just "convex-opt
+  net-hurts retention" (Part 9) but "a one-line reference-variable change to the free
+  naive correction gets you convex-opt's real benefit without its cost." Full data:
+  pipelinedata/reviewer_response/naive_reference_variant_comparison.csv. NEXT STEP (not
+  yet done): re-run the full pipeline with this change and re-evaluate/re-train the ANN
+  on the larger resulting dataset.
+
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
 text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
