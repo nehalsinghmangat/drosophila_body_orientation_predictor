@@ -298,6 +298,10 @@ locally-broken run that only retained 718 trajectories):
                                                                           (do OLS baselines generalize across wind directions
                                                                            too? — see DO THE OLS/CIRCULAR-REGRESSION BASELINES
                                                                            section below)
+  notebooks/model_training_based_on_reviewer_feedback_part11_ann_vs_ols_by_regime.ipynb
+                                                                          (is the ANN's edge over augmented-fit OLS uniform
+                                                                           across regimes? — see DOES THE ANN STILL BEAT
+                                                                           section below)
 
 Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
@@ -750,6 +754,37 @@ DIRECTIONS, OR ONLY THE ANN? (follow-up, notebooks/model_training_based_on_revie
   evaluated under rotation. Any baseline reported in the manuscript needs to be
   checked under rotation before being called "the best simple alternative."
   Full data: pipelinedata/reviewer_response/ols_rotation_generalization.csv.
+
+DOES THE ANN STILL BEAT THE BEST AUGMENTED-FIT LINEAR MODEL, BY FLIGHT-
+DIRECTION REGIME? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part11_ann_vs_ols_by_regime.ipynb):
+
+  Part 10 found the ANN's overall margin over the augmented-fit circular
+  (air+ground) regression is modest (~0.9 deg, 5.55 vs 6.47 deg pooled). This
+  notebook checks whether that margin is uniform across upwind/crosswind/
+  downwind (Part 3's regimes) or concentrated in specific ones.
+
+      Regime (heading convention)   ANN       OLS (augmented-fit)   Gap
+      Upwind                        5.84 deg  15.96 deg             ANN better by 10.1 deg
+      Crosswind                    11.76 deg  26.01 deg             ANN better by 14.3 deg
+      Downwind                      5.15 deg   4.32 deg             OLS better by 0.8 deg
+
+  (Travel-direction convention: same pattern - ANN better by 9.0 deg upwind, 8.8
+  deg crosswind; OLS better by 1.3 deg downwind.)
+
+  RESULT: the pooled ~0.9 deg margin badly understates the real picture. Downwind
+  is both the easiest regime (Part 3's degenerate-vector mechanism) AND the most
+  common (~70-80% of frames), so it dominates the pooled average - and in that
+  regime the two-variable linear model does as well as, or marginally better
+  than, the ANN. But in the harder, minority regimes (upwind, crosswind), where
+  directional cues become numerically near-degenerate, a linear/circular map of
+  just two quantities cannot keep up, and the ANN's advantage is large and
+  unambiguous (8-14 deg). CORRECT FRAMING FOR THE RESPONSE LETTER: not "the ANN
+  barely helps" (Part 10's pooled number) nor "the ANN is dramatically better
+  everywhere" - the ANN's benefit is concentrated exactly where translational
+  kinematics alone are least informative, which is a coherent, defensible reason
+  to use a neural network even though the pooled accuracy number alone does not
+  show it. Full data:
+  pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
