@@ -290,6 +290,10 @@ locally-broken run that only retained 718 trajectories):
                                                                           (all 38 raw/naive/convex-opt comparison figures for
                                                                            dynamic, disagreeing trajectories — see VISUAL CHECK
                                                                            section below)
+  notebooks/model_training_based_on_reviewer_feedback_part9_rejection_cause.ipynb
+                                                                          (MAJOR FINDING: attributes the 30% rejection rate to
+                                                                           convex-opt, not the filter — see WHY ARE 30% OF
+                                                                           TRAJECTORIES REJECTED section below)
 
 Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
@@ -639,6 +643,70 @@ WHERE THE CORRECTIONS ACTUALLY DISAGREE (follow-up, notebooks/model_training_bas
   figures/reviewer_response_part8_dynamic_correction_comparison/*.{svg,png} (38 of
   each). Trajectory list with severity metrics:
   pipelinedata/reviewer_response/dynamic_correction_comparison_trajectories.csv.
+
+WHY ARE 30% OF TRAJECTORIES REJECTED — IS CONVEX-OPT RUINING THEM, OR IS THE
+FILTER TOO STRICT? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part9_rejection_cause.ipynb):
+THIS IS A MAJOR FINDING, likely the single most consequential result in this
+whole response.
+
+  data_pipeline.ipynb rejects a trajectory if its residual frame-to-frame jump on
+  the NAIVE+CONVEX-OPT corrected heading reaches pi/2 anywhere. 1,001 of 3,339
+  candidates (30%) are rejected this way. Using only pipelinedata/02_augmented
+  and the ALREADY-COMPUTED pipelinedata/03_corrected (no new MOSEK solves
+  needed), every candidate's naive-only jump was compared to its already-computed
+  naive+convex-opt jump:
+
+      996 of 1,001 rejections (99.5%): fine at naive-only (jump < 90 deg),
+                                        REJECTED BECAUSE OF convex-opt.
+        5 of 1,001 rejections (0.5%):  already failing at naive-only; convex-opt
+                                        did not fix them.
+        0 of 1,001 rejections:         failing at naive-only and RESCUED by
+                                        convex-opt.
+
+  Naive-only correction ALONE would retain 3,334 of 3,339 candidates (99.85%). It
+  is specifically the convex-opt step that drives retention down to 70%.
+
+  The 996 introduced jumps are not marginal: median 173.8 deg (60% exceed 170
+  deg, i.e. near-complete pi flips, not small nudges over the 90 deg line), and
+  78% occur at BELOW-average thrust for that trajectory (median ratio 0.60) -
+  the opposite of what the thrust-alignment term's design rationale predicts for
+  a genuine high-force correction event.
+
+  Spatial trajectory plots (the same style used in Part 8) again proved too
+  subtle to judge a pure heading flip by eye - a flipped trail looks nearly
+  identical to the original since only "which end is forward" changes. A time-
+  series plot of unwrapped heading vs. frame index removed the ambiguity
+  completely and showed, across 4 examples spanning the full range from
+  smallest to largest introduced jump and the single longest trajectory (833
+  frames):
+    - Convex-opt disagreeing with an otherwise flat, stable naive-only signal
+      for an isolated stretch of frames, then flipping back - no physical basis
+      in the naive-only signal, which already showed no real turning there.
+    - Instability concentrated at trajectory BOUNDARIES - consistent with the
+      current production convex_opt_heading_correction no longer anchoring k=0
+      at trajectory endpoints (the pre-merge, buggy local version of this
+      function used to have that anchor specifically to prevent this).
+    - In the longest trajectory tested, convex-opt disagreeing with naive-only
+      across nearly the ENTIRE trajectory from frame zero (not a late localized
+      error), then becoming internally unstable with a second jump partway
+      through.
+  None of the 4 examples looked like a real saccade naive-only missed; all 4
+  looked like the optimizer making an unforced, unjustified choice.
+
+  BOTTOM LINE: the pi/2 filter is not too strict, and this is not primarily a
+  labeling-ambiguity problem. Convex-opt correction, as currently configured
+  (alpha1=1, alpha2=5, no boundary anchor), is net HARMFUL to trajectory
+  retention - it is responsible for essentially all of the 30% rejection rate,
+  discarding good data that a much simpler naive-only heuristic already handled
+  correctly. This is a stronger and more actionable finding than the earlier
+  "convex-opt gives a small, real, but partial accuracy benefit on the
+  trajectories that survive it" (Part 7): the cost in discarded good data
+  appears to outweigh that benefit. Reintroducing a boundary anchor and/or
+  revisiting the alpha1/alpha2 balance (or normalizing thrust magnitude
+  differently) are the natural next things to try, and could plausibly recover
+  most of the 996 unnecessarily-discarded trajectories. Full data:
+  pipelinedata/reviewer_response/rejection_cause_analysis.csv. Figures:
+  figures/reviewer_response_part9_*.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
