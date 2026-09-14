@@ -939,6 +939,42 @@ RE-RUNNING THE FULL PIPELINE WITH naive(thrust)-ONLY CORRECTION, NO CONVEX-OPT
   pipelinedata/reviewer_response/06_final_thrust_naive_only.csv,
   pipelinedata/reviewer_response/ann_thrust_naive_only_by_regime.csv.
 
+A PRINCIPLED FILTERING CRITERION TO REPLACE CONVEX-OPT'S REJECTION
+(follow-up, notebooks/model_training_based_on_reviewer_feedback_part15_principled_filtering_criterion.ipynb):
+
+  Two direct follow-ups to Part 14: (1) how much worse, exactly, is training WITH the
+  recovered trajectories - rigorously, not just point estimates from different test
+  sets; (2) is there a defensible, non-arbitrary metric to exclude the hard
+  (near-hover) trajectories, replacing convex-opt's discredited (Part 9) rejection?
+
+  RIGOROUS "HOW MUCH WORSE": on a genuinely common held-out set (262 trajectories never
+  trained on by either model), full (mixed-population) model 7.36 deg vs. overlap-only
+  model 5.61 deg - paired median difference 0.91 deg [95% CI 0.44, 1.49] (Wilcoxon
+  p=1.3e-4), a 31% relative increase, worse on 60% of the 262 trajectories individually.
+  Real and statistically robust, not an artifact of comparing different test sets.
+
+  WHY LOW THRUST DEGRADES ACCURACY (two compounding, evidenced mechanisms): (1) thrust_angle
+  is a direct ANN input (4/24 dims); its within-trajectory angular concentration correlates
+  with thrust magnitude (Spearman 0.28, rising 0.77->0.93 across thrust deciles) - the same
+  degenerate-small-vector mechanism as groundspeed_angle (Part 3), now shown to also affect
+  the model's own inputs (weaker than groundspeed's 0.61, but real). (2) a near-hovering fly
+  is not aerodynamically obligated to align body orientation with a near-zero thrust vector
+  the way fast forward flight requires - the true kinematics-to-heading mapping may be
+  genuinely weaker at low thrust, not just noisier. Both explain why a model trained across
+  both regimes underperforms even on the easy majority (a shared fixed-capacity network
+  fitting a heterogeneous population pays a real cost on the easy cases too).
+
+  PRINCIPLED CRITERION: mean thrust magnitude per trajectory - Spearman -0.39 with error
+  overall, holding separately within old (-0.28) and recovered (-0.28) subpopulations alike
+  (a genuine mechanism, not an old/recovered marker). A uniform threshold (5e-7, applied to
+  old and recovered trajectories with no special-casing) excludes only 8.7% of currently-
+  published trajectories while including 80% of recovered ones, netting 2936 trajectories -
+  MORE than the current 2338 - retrained accuracy 6.58 deg [5.98, 7.13]: better than
+  including everything (8.55 deg), not as good as the tightest/current-size option (5.20-5.55
+  deg). The threshold-vs-size-vs-accuracy trade-off is continuous and reported explicitly
+  (pipelinedata/reviewer_response/thrust_threshold_tradeoff.csv), letting the paper choose a
+  disclosed, defensible operating point instead of convex-opt's silent, artifact-driven one.
+
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
 text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
