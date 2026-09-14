@@ -881,9 +881,63 @@ IS `groundspeed_angle` THE RIGHT REFERENCE FOR NAIVE HEADING CORRECTION?
   the "no convex-opt" decision the user was already leaning toward - not just "convex-opt
   net-hurts retention" (Part 9) but "a one-line reference-variable change to the free
   naive correction gets you convex-opt's real benefit without its cost." Full data:
-  pipelinedata/reviewer_response/naive_reference_variant_comparison.csv. NEXT STEP (not
-  yet done): re-run the full pipeline with this change and re-evaluate/re-train the ANN
-  on the larger resulting dataset.
+  pipelinedata/reviewer_response/naive_reference_variant_comparison.csv.
+
+  CORRECTION (see Part 14 below): actually re-running the pipeline and retraining showed
+  the "at no cost" framing above was premature - the recovered trajectories ARE real and
+  DO reproduce as predicted, but they are harder to predict, not free. The correction
+  method recommendation stands; the "recover 996 trajectories for free" framing does not.
+
+RE-RUNNING THE FULL PIPELINE WITH naive(thrust)-ONLY CORRECTION, NO CONVEX-OPT
+(follow-up, notebooks/model_training_based_on_reviewer_feedback_part14_full_pipeline_rerun.ipynb):
+
+  Acted on Part 13 by actually rebuilding the pipeline (naive(thrust)-only correction,
+  same pi/2-jump filter, same smoothing, same headx/heady construction) and retraining
+  the ANN (same architecture as Part 1's model_full: 2 layers x 20 neurons; the
+  hyperparameter search itself was not repeated) on the larger resulting population,
+  then evaluating exactly as Parts 1/4/11 did.
+
+  FIRST RESULT (surprising): real-test accuracy got WORSE, not better - 8.55 deg vs.
+  5.55 deg, rotation generalization 9.08 +/- 0.69 deg vs. 6.39 +/- 0.44 deg, and every
+  upwind/crosswind/downwind regime numerically worse. This looked like it contradicted
+  Part 13.
+
+  DIAGNOSIS: splitting the test set by whether each trajectory was already in the
+  current pipeline's retained set ("overlap", 795 trajectories) or is newly non-rejected
+  ("recovered", 302 trajectories in this test split) showed the degradation is
+  concentrated almost entirely in the recovered subset: 7.02 deg (overlap) vs. 21.27 deg
+  (recovered), evaluated with the SAME model. The recovered trajectories also have
+  systematically lower thrust magnitude (median 7.70e-7 vs. 1.05e-6, a 27% reduction)
+  and lower groundspeed (0.29 vs. 0.35) than the trajectories the current pipeline
+  already uses - consistent with Part 9's finding that convex-caused rejections were
+  disproportionately at below-average thrust, and with Part 13's motivating near-hover
+  example.
+
+  DECISIVE CONTROL: retraining the identical architecture on ONLY the 2338 trajectories
+  the current pipeline already uses (naive(thrust)-only labels, no convex-opt, same
+  1569/771 split sizes) gave 5.20 deg [4.91, 5.59] - matching, if anything marginally
+  beating, the current pipeline's 5.55 deg [5.24, 5.94]. This confirms Part 13's
+  static label-agreement finding holds up under actual retraining: the reference-variable
+  fix itself is not the source of the degradation seen above.
+
+  RESULT (full, internally consistent picture): (1) naive(thrust)-only correction,
+  dropping convex-opt, is a validated, safe replacement for naive(ground)+convex-opt on
+  the population the current pipeline already trains on - no accuracy cost, no MOSEK
+  dependency. (2) The ~990 additional trajectories this correction method also recovers
+  are real, previously-invisible data, but are disproportionately drawn from a harder,
+  near-hover/low-thrust subpopulation - not free extra clean data, roughly tripling
+  measured error where they're included.
+
+  REVISED RECOMMENDATION FOR THE RESPONSE LETTER: adopt the naive(thrust)-only
+  correction method itself (validated, no downside, removes MOSEK). Treat "should the
+  recovered near-hover trajectories be folded into the published training/evaluation
+  set" as a SEPARATE, deliberate decision - either (a) include them and report the
+  correspondingly higher, honest headline accuracy numbers as covering a wider flight
+  repertoire, or (b) exclude them and explicitly note near-hover/low-thrust segments as
+  a known scope limitation, rather than silently dropping them via an unprincipled
+  rejection filter as the current pipeline does. Full data:
+  pipelinedata/reviewer_response/06_final_thrust_naive_only.csv,
+  pipelinedata/reviewer_response/ann_thrust_naive_only_by_regime.csv.
 
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
