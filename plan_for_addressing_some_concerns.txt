@@ -1014,6 +1014,60 @@ notebooks/model_training_based_on_reviewer_feedback_part16_thrust_ablation_revis
   the thrust-ablation circularity control needs to be re-run against the NEW labels, not
   assumed to still hold from Part 1's original (differently-labeled) analysis.
 
+AN IMPROVED naive(thrust) CORRECTION: WEIGHTED REFERENCE + OUTLIER INTERPOLATION,
+BUILT AND HONESTLY VALIDATED (follow-up,
+notebooks/model_training_based_on_reviewer_feedback_part17_improved_correction.ipynb):
+
+  Implemented the two remedies discussed for naive(thrust)-only correction's weaknesses:
+  (1) a thrust-magnitude-WEIGHTED circular mean for both global branch decisions (instead
+  of unweighted, which gives noisy low-thrust frames equal say); (2) a spike detector that
+  interpolates a single-frame outlier only when it deviates sharply from BOTH neighbors
+  while those neighbors are close to EACH OTHER (distinguishing an isolated bad
+  measurement from a genuine, sustained fast turn - a naive single-sided threshold at the
+  same deviation level would have flagged ~2% of frames, mostly real turns, not noise;
+  the gap check keeps it to 0.225%).
+
+  FRAME-BY-FRAME: V1 (unweighted) and V2 (weighted+outlier-fixed) are frame-identical on
+  92%+ of trajectories, differing substantially on only ~2% - the fixes are surgical, not
+  a wholesale change. Separately, ~24% of trajectories (797/3339) show the ORIGINAL
+  pipeline (convex-opt) disagreeing with both new methods while V1 and V2 agree with each
+  other - direct, visible evidence of convex-opt introducing a spurious local jump neither
+  naive(thrust) variant reproduces (one concrete example shown: convex-opt flips only the
+  first 4 of 14 frames, creating a ~172 deg jump at the transition where the raw signal is
+  smooth; both naive(thrust) variants treat the whole trajectory consistently).
+
+  METHODOLOGICAL LESSON (important, general): an early cross-process comparison gave
+  contradictory results (V2 looked worse, then better) purely because Python's per-process
+  hash randomization changes set/dict iteration order, silently changing which
+  trajectories land in the train/validation split even with a fixed random seed. Any
+  future split derived from a Python set or dict in this codebase needs explicit sorting
+  to be reproducible across runs - this was not previously a concern since prior parts
+  happened to only ever compare models trained within a single script invocation.
+
+  DECOMPOSED ACCURACY RESULT (all 4 variants + OLD trained/evaluated together in one run,
+  explicit sorting, thrust-ablated architecture): OLD (ground+convex-opt) remains clearly
+  best on its own population (4.60 deg [4.35, 4.87], 795 overlap trajectories) - none of
+  the naive(thrust) variants come close (7.2-8.1 deg on the full test set). Among the
+  naive(thrust) variants: WEIGHTING ALONE is significantly WORSE than unweighted (+0.34
+  deg, p=0.0004) - not a validated improvement; it functions more like a different,
+  comparably-noisy coin-flip on ambiguous cases (on the recovered-only subset, 128
+  trajectories favored the weighted decision and 174 favored unweighted, both sides with
+  full ~150-165 deg swings). OUTLIER-FIX ALONE is statistically indistinguishable from
+  baseline (p=0.61) - safe, doesn't hurt, but no detectable accuracy benefit at this
+  sample size. COMBINED (V2), a small but statistically significant net improvement
+  emerges (-0.37 deg, p=0.0053) - an INTERACTION effect between the two fixes, not the
+  sum of two independently-good changes, and should be treated as provisional pending
+  further validation (multiple seeds) rather than adopted with full confidence.
+
+  RECOMMENDATION: adopt the outlier-interpolation fix (safe, addresses a concretely-
+  demonstrated bug, no accuracy cost). Do NOT adopt the weighted-reference fix as
+  currently implemented (not validated in isolation). Most importantly: no naive(thrust)
+  variant, improved or not, closes the accuracy gap to convex-opt on the population
+  convex-opt already handles well - the case for switching correction methods (Parts
+  13-16) rests on removing the MOSEK dependency, fixing convex-opt's unprincipled
+  rejection of ~1000 trajectories (Part 9), and avoiding its spurious local jumps (this
+  part), not on matching or beating its raw accuracy there, which naive(thrust) does not.
+
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
 text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
