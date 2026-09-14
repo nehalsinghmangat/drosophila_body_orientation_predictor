@@ -487,6 +487,126 @@ def naive_heading_correction(fly_trajectory_and_body: pd.DataFrame) -> pd.DataFr
     return fly_trajectory_and_body
 
 
+def _weighted_circmean(angles: np.ndarray, weights: np.ndarray) -> float:
+    """Circular mean of angles weighted by (non-negative) weights."""
+    return float(np.angle(np.sum(np.asarray(weights) * np.exp(1j * np.asarray(angles)))))
+
+
+def _spike_detect_and_interp(corrected: np.ndarray, dev_thresh_rad: float, gap_thresh_rad: float):
+    """
+    Detect and interpolate single-frame outliers in an unwrapped angle signal.
+
+    A frame is flagged only if it deviates sharply from BOTH neighbors while those
+    neighbors are close to EACH OTHER — i.e. the signal would look smooth without this
+    one frame. This distinguishes an isolated bad measurement (e.g. a single bad
+    ellipse fit) from a genuine, sustained fast turn, which would also show a large
+    gap between its own neighbors and should not be flagged.
+
+    Returns the corrected array (outlier frames replaced by linear interpolation
+    between their nearest non-outlier neighbors) and a boolean mask of flagged frames.
+    """
+    n = len(corrected)
+    is_outlier = np.zeros(n, dtype=bool)
+    for i in range(1, n - 1):
+        gap = abs(corrected[i - 1] - corrected[i + 1])
+        dev = min(abs(corrected[i] - corrected[i - 1]), abs(corrected[i] - corrected[i + 1]))
+        if dev > dev_thresh_rad and gap < gap_thresh_rad:
+            is_outlier[i] = True
+
+    fixed = corrected.copy()
+    for i in np.where(is_outlier)[0]:
+        left = i - 1
+        while left >= 0 and is_outlier[left]:
+            left -= 1
+        right = i + 1
+        while right < n and is_outlier[right]:
+            right += 1
+        if left >= 0 and right < n:
+            frac = (i - left) / (right - left)
+            fixed[i] = corrected[left] + frac * (corrected[right] - corrected[left])
+        elif left >= 0:
+            fixed[i] = corrected[left]
+        elif right < n:
+            fixed[i] = corrected[right]
+    return fixed, is_outlier
+
+
+def naive_heading_correction_v2(
+    fly_trajectory_and_body: pd.DataFrame,
+    dev_thresh_deg: float = 40.0,
+    gap_thresh_deg: float = 30.0,
+) -> pd.DataFrame:
+    """
+    Correct 180° heading ambiguities using a thrust-referenced, weighted, outlier-robust
+    variant of naive_heading_correction (no MOSEK/convex-opt required).
+
+    Differs from naive_heading_correction in three ways:
+      1. Reference signal is thrust_angle, not groundspeed_angle — thrust_angle stays
+         well-defined at near-zero groundspeed (e.g. hovering), where groundspeed_angle
+         becomes numerically unstable (the angle of a near-zero-magnitude vector).
+      2. Both global branch decisions (initial-window alignment and final whole-
+         trajectory alignment) use a thrust-magnitude-WEIGHTED circular mean rather than
+         an unweighted one, so low-thrust (noisier) frames contribute less to the
+         decision than high-thrust (more reliable) ones.
+      3. A single-frame outlier in the locally-unwrapped signal is detected and
+         interpolated (see _spike_detect_and_interp) rather than left uncorrected.
+
+    Validated in the reviewer-response analysis (see notebooks/
+    model_training_based_on_reviewer_feedback_part17_improved_correction.ipynb):
+    the outlier-interpolation step is a safe, well-motivated fix with no measurable
+    accuracy cost. The thrust-weighting step alone was found to be a net-negative
+    change in isolation (it behaves more like a different, comparably noisy heuristic
+    on ambiguous low-thrust trajectories than a reliable improvement); combined with
+    the outlier fix it gave a small, statistically significant net improvement, but
+    that combined result should be treated as provisional pending further validation
+    (e.g. across multiple random seeds) rather than a settled result.
+
+    Parameters
+    ----------
+    fly_trajectory_and_body : pd.DataFrame
+        Must have 'heading_angle', 'thrust_angle', and 'thrust' columns.
+    dev_thresh_deg : float
+        Minimum deviation (degrees) a frame must show from BOTH neighbors to be
+        flagged as an outlier.
+    gap_thresh_deg : float
+        Maximum allowed gap (degrees) between a flagged frame's two neighbors, so a
+        genuine fast turn (large neighbor gap) is not flagged.
+
+    Returns
+    -------
+    pd.DataFrame
+        Input DataFrame with 'heading_angle' corrected (mutated in place).
+    """
+    angle = fly_trajectory_and_body["heading_angle"].copy().values
+    course = fly_trajectory_and_body["thrust_angle"].values
+    thrust_mag = fly_trajectory_and_body["thrust"].values
+    initial_window = 5
+
+    w0 = thrust_mag[0:initial_window]
+    circ_diff_start = circular_distance(
+        _weighted_circmean(course[0:initial_window], w0),
+        _weighted_circmean(angle[0:initial_window], w0),
+    )
+    if circ_diff_start > 0.5 * np.pi:
+        angle = angle + np.pi * np.sign(circ_diff_start)
+
+    corrected = np.unwrap(angle, period=np.pi, discont=0.5 * np.pi)
+    corrected, _ = _spike_detect_and_interp(
+        corrected, np.radians(dev_thresh_deg), np.radians(gap_thresh_deg)
+    )
+
+    corrected_wrapped = wrapToPi(corrected)
+    course_wrapped = wrapToPi(course)
+    phi_mean = _weighted_circmean(corrected_wrapped, thrust_mag)
+    psi_mean = _weighted_circmean(course_wrapped, thrust_mag)
+    circ_diff = circular_distance(phi_mean, psi_mean)
+    if circ_diff > 0.5 * np.pi:
+        corrected = corrected + np.pi * np.sign(circ_diff)
+
+    fly_trajectory_and_body["heading_angle"] = wrapToPi(corrected)
+    return fly_trajectory_and_body
+
+
 def convex_opt_heading_correction(fly_trajectory_and_body: pd.DataFrame) -> pd.DataFrame:
     """
     Correct 180° heading ambiguities via convex optimization (requires MOSEK).
@@ -900,7 +1020,7 @@ def plot_trajectory(
     every_nth: int = 4,
     L: float = 0.008,
     legend: bool = True,
-    heading_color: str = 'blue',
+    heading_color: str = 'red',
     heading_size: float = 0.5,
     heading_alpha: float = 0.8,
     show_groundspeed: bool = False,
