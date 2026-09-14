@@ -975,6 +975,45 @@ A PRINCIPLED FILTERING CRITERION TO REPLACE CONVEX-OPT'S REJECTION
   (pipelinedata/reviewer_response/thrust_threshold_tradeoff.csv), letting the paper choose a
   disclosed, defensible operating point instead of convex-opt's silent, artifact-driven one.
 
+THE THRUST-ABLATION CONTROL, REVISITED (correction to Part 15; follow-up,
+notebooks/model_training_based_on_reviewer_feedback_part16_thrust_ablation_revisited.ipynb):
+
+  Direct user catch: every Part 13-15 model used `input_names_full` (includes thrust,
+  thrust_angle as ANN inputs) - the SAME circularity concern Part 1 addressed for the
+  original convex-opt correction (thrust-ablated 4.95 deg vs. full 5.55 deg there) was
+  never re-checked for Part 13's naive(thrust)-only correction, even though that
+  correction is now MORE tied to thrust_angle (its sole reference) than convex-opt was.
+
+  RESULT: re-running Parts 14-15's key comparison with thrust ablated from the model's
+  inputs REVERSES Part 15's central finding. Own-test-set accuracy improves with thrust
+  removed (6.94 vs. 8.55 deg, mixed population) - consistent with Part 1. And the 0.91
+  deg "cost" of training with the recovered trajectories (Part 15, Wilcoxon p=1.3e-4,
+  statistically robust) COMPLETELY VANISHES: 0.03 deg [95% CI -0.60, 0.57], p=0.72, on
+  the identical 262-trajectory common held-out set. That cost was specific to a model
+  that takes thrust_angle - itself shown noisier at low thrust (Part 15 Sec 2b) - as an
+  input; it was not a property of the recovered trajectories themselves.
+
+  HOWEVER: the recovered trajectories remain intrinsically HARDER to predict on their own
+  terms even without thrust as an input (17.62 deg vs. 5.53 deg for overlap trajectories,
+  >3x gap, nearly as large as the thrust-including 21.27 vs. 7.02 deg). This confirms
+  Part 15's "Mechanism 2" (weaker aerodynamic coupling between heading and kinematics at
+  low thrust - a real, architecture-independent task-difficulty effect) while isolating
+  "Mechanism 1" (thrust_angle as a noisy model input) as the specific, architecture-
+  dependent cause of the training-cost effect that disappears here.
+
+  REVISED RECOMMENDATION (supersedes Part 15's filtering framing): for the thrust-ablated
+  architecture - which Part 1 already preferred on both accuracy and circularity grounds,
+  and which performs at least as well under the corrected pipeline too - there is no
+  accuracy reason to exclude the recovered near-hover trajectories from training at all.
+  Part 15's thrust-magnitude filtering criterion answered a real finding, but one specific
+  to an architecture this response should not actually be recommending. The honest framing
+  is not "should this harder data be thrown away" but "the near-hover regime is
+  intrinsically harder to predict and should be disclosed transparently (e.g. per-regime,
+  as in Part 3/11), not silently excluded or silently averaged into one pooled number."
+  LESSON FOR THIS RESPONSE'S OWN METHODOLOGY: any time the correction method changes,
+  the thrust-ablation circularity control needs to be re-run against the NEW labels, not
+  assumed to still hold from Part 1's original (differently-labeled) analysis.
+
 STILL OPEN: items 12-14 (Manuscript/administrative) — reconciling the
 frame-count numbers, correcting the funding statement (verified exact
 text: "This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and
