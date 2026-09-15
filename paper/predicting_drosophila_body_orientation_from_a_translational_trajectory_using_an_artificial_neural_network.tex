@@ -7,121 +7,303 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{bm}
-\usepackage{natbib}
-\bibliographystyle{plainnat}
+\usepackage{booktabs}
+\usepackage{multirow}
+
+% \usepackage{natbib}
+% \bibliographystyle{plainnat}
+\usepackage[numbers,compress]{natbib}
+\bibliographystyle{vancouver}
+
+
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\doublespacing
+\usepackage{lineno}
+\linenumbers
 
 \setcounter{secnumdepth}{4}
 
 \title{Predicting \textit{Drosophila} Body Orientation from a Translational Trajectory using an Artificial Neural Network }
-\author{Nehal Singh Mangat, Floris van Breugel}
+\author{Nehal Singh Mangat, Christina E. May, Katherine I. Nagel, Floris van Breugel}
 
 \begin{document}
 \maketitle
+
+\section*{Abstract}
+
+Body orientation is a key variable in the analysis of insect flight behavior, yet it remains difficult to measure across the full extent of a trajectory in most experimental settings. Although modern tracking systems reliably capture the position and velocity of the center of mass, resolving body yaw orientation typically requires dedicated hardware confined to a small, purpose-built volume, and is impractical for large-scale or long-duration studies. Here, we develop a data-driven estimator that predicts body yaw orientation directly from translational flight trajectory data. We trained a fully connected feedforward artificial neural network (ANN) on a dataset in which both flight trajectory and body orientation were recorded simultaneously in freely flying \textit{Drosophila}, using ground velocity and air velocity vectors as input features.
+%To improve generalization across arbitrary coordinate frames, we augmented the training data with random rotational transformations.
+Evaluated on a withheld, trajectory-grouped test set of 1,099 trajectories (37,389 frames), a rotation-augmented model with an architecture and loss function selected via a grouped cross-validated search achieved a median per-trajectory angular error of 5.35$^{\circ}$ (95\% CI: 4.95$^{\circ}$--5.74$^{\circ}$), with accurate heading recovery across the full $[-\pi,\pi)$ range. Leave-one-wind-speed-out testing showed that this performance generalizes to wind conditions excluded entirely from training in most cases, but degrades substantially when the fastest wind speed is withheld, particularly during upwind flight; we accordingly provide a lightweight ensemble-based confidence signal and an input-range check to help identify individual predictions that are likely unreliable. The estimator provides a practical tool for recovering body orientation information from existing trajectory datasets in which only center-of-mass motion was recorded, extending the behavioral and computational analysis of insect navigation to previously inaccessible data.
+
 \section*{Introduction}
-Body orientation is a key behavioral variable in many navigation tasks. However, measuring body orientation for small airborne insects, such as the fruit fly, \textit{Drosophila}, remains technically challenging. While modern tracking systems can reliably capture the position and velocity of the center of mass, they often fail to resolve body orientation over the entire trajectory.
 
-Simultaneous measurement of flight trajectory and body orientation has been achieved in several laboratory settings. For example, \citet{van2014plume} instrumented a wind tunnel with a top-down camera and inferred body heading from ellipse-fitted silhouettes; however, the auxiliary camera's narrow field of view meant that orientation could be resolved only for a small central subsection of the tunnel, leaving the majority of each trajectory without heading data. Multi-camera three-dimensional reconstruction methods have extended this capability to flight arenas \citep{cheng2015novel, cheng2015estimating}, and high-speed videography at thousands of frames per second has been used to capture rapid orientation changes during evasive maneuvers \citep{muijres2014flies}. In each case, body orientation measurement requires substantial dedicated hardware confined to a purpose-built experimental volume, making it impractical for large-scale or long-duration studies. A common workaround is to substitute the airspeed direction as a proxy for body heading; however, this assumption breaks down during turning maneuvers, casting, and saccades, where body orientation and velocity direction diverge substantially \citep{cheng2015estimating, muijres2014flies, van2014plume}. As a consequence, the large body of existing trajectory data --- including field-scale studies where no orientation optics are feasible \citep{leitch2021long} --- cannot be directly used for analyses that require heading information.
+Body orientation is a key behavioral variable in many navigation tasks. However, measuring body orientation for small airborne insects, such as the fruit fly, \textit{Drosophila}, remains technically challenging. Although modern tracking systems can reliably capture the position and velocity of the center of mass \citep{straw2011multi, vo2024high, deMargerie2015}, they often fail to resolve body orientation over the entire trajectory unless high resolution images are available.
 
-Here we develop a data-driven estimator that predicts body yaw orientation from translational flight trajectories. We leverage an existing dataset \citep{van2014plume} in which body orientation and kinematic trajectory were measured simultaneously, training an artificial neural network to learn the relationship between trajectory kinematics and body heading. Prior work has used trajectory-derived kinematics together with neural networks to estimate other unobservable quantities, such as ambient wind direction \citep{cellini2024discovering}; here we apply an analogous strategy to the body heading itself, which is typically either unmeasured or collapsed into the airspeed direction \citep{cellini2024discovering, leitch2021long}. The resulting model generates plausible body yaw estimates for arbitrary free-flight trajectories, enabling recovery of orientation information from datasets where only center-of-mass motion was recorded. This approach provides a practical tool for extending the behavioral and computational analysis of insect navigation to previously unusable trajectory datasets.
+Simultaneous measurement of flight trajectory and body orientation has been achieved in several laboratory settings. For example, by instrumenting a wind tunnel with a top-down camera van Breugel et al. inferred body heading from ellipse-fitted silhouettes \citep{van2014plume}; however, the auxiliary camera's narrow field of view meant that orientation could be resolved only for a small central subsection of the tunnel, leaving the majority of each trajectory without heading data. 
+Related studies have used multi-camera views to do three-dimensional reconstruction \citep{cheng2015novel, cheng2015estimating}, in some cases with high-speed videography to capture rapid orientation changes during evasive maneuvers \citep{muijres2014flies}. In each case, body orientation measurement requires substantial dedicated hardware confined to a purpose-built experimental volume, making it impractical for large-scale or long-duration studies. During steady flight it may be reasonable to use the air or ground velocity as a proxy; however, this assumption breaks down during turning maneuvers, where body orientation and air/ground velocity direction diverge substantially \citep{cheng2015estimating, muijres2014flies, van2014plume}. As a consequence, the large body of existing trajectory data -- including field-scale studies where orientation estimates are not feasible \citep{stentiford2025precise} -- cannot be directly used for analyses that require heading information.
+
+Here, we develop a data-driven estimator that predicts body yaw orientation from translational flight trajectories. We leverage an existing dataset \citep{van2014plume} in which body orientation and translational trajectory information were measured simultaneously, training an artificial neural network to learn the relationship between trajectory kinematics and body heading. The resulting model generates plausible body yaw estimates for arbitrary free-flight trajectories, enabling recovery of orientation information from datasets where only center-of-mass motion was recorded. This approach provides a practical tool for extending the behavioral and computational analysis of insect navigation to previously unusable trajectory datasets.
 
 \section*{Methods}
 
-\subsection*{1.~~Data Preparation and Preprocessing}
-To train our estimator we used data collected as part of previously published work \citep{van2014plume}, available from Data Dryad. Two data streams were relevant: (i) flight trajectory data (x, y, z position and velocity measurements over time) and (ii) body-orientation measurements.
+\subsection*{Data Preprocessing}
+To train our estimator, we used data collected as part of previously published work \citep{van2014plume}. The 3D trajectory data is available from Data Dryad \citep{Pang2018}, though the body orientations were never made public. The dataset included trajectories recorded at three different wind speeds, 0.3, 0.4, and 0.6 m/s. Two data streams were relevant: (i) flight trajectory data (x, y, z position and velocity measurements over time) and (ii) body-orientation measurements. Trajectories shorter than 0.12 seconds were removed from the training and test sets; this ensured that only sequences with adequate temporal context were retained for model training and evaluation.
 
-\subsubsection*{1.1~~Kinematic Feature Augmentation}
-From the raw position and velocity data we computed a set of derived kinematic variables at each time step: groundspeed (magnitude of the horizontal velocity vector), groundspeed angle (direction of the horizontal velocity vector), airspeed (magnitude of the velocity vector relative to the ambient wind), airspeed angle (direction of the airspeed vector), thrust (a proxy for net aerodynamic force, computed from the 3D acceleration), and thrust angle (direction of the thrust vector). These quantities are illustrated for an example trajectory in Figure~\ref{fig:data_pipeline}B.
 
-\subsubsection*{1.2~~Body Orientation Correction and Filtering}
-The body orientation measurements were captured using a top-down camera. At each frame containing a fly, the animal was approximated using an ellipse, and only the parameters of this ellipse were recorded. Thus, the body orientation data are accurate only modulo~$\pi$, resulting in discontinuous ``jumps'' of magnitude~$\pi$ throughout many trajectories. In addition, measurement noise introduced high-frequency jitter that was not physically meaningful. Therefore, prior to model training, we applied the three steps described below to correct and smooth the body orientation estimates; an example of their effect on a single trajectory is shown in Figure~\ref{fig:data_pipeline}A.
+\subsubsection*{Initial Feature Augmentation}
+From the raw position and velocity data we computed a set of derived variables at each time step: the groundspeed vector, $\mathbf{v_g}$; the airspeed vector, $\mathbf{v_a}$; and the thrust vector $\mathbf{f_t}$, computed via 
+\begin{equation*}
+    \mathbf{f_t} = m \mathbf{\ddot{v}_g} - F_d 
+\end{equation*}, where $m$ is the mass of the fly,  $\mathbf{\ddot{v}_g}$ is computed numerically, and the drag force $\mathbf{F_d}$ is given by 
+\begin{equation*}
+\mathbf{F_d} = \frac{1}{2}\rho A C_d v_a^2,
+\end{equation*}
+where $\rho$ is the fluid density, $A$ is the cross-sectional area, and $C_d$ is the drag coefficient (the values of all parameters were taken from the literature e.g. \citep{fry2005aerodynamics} and may be found in the accompanying notebook). These quantities are illustrated over the course of an example trajectory in Figure~\ref{fig:data_pipeline}A-B. As demonstrated by the baseline comparison in Figure~\ref{fig:data_pipeline}C (Methods, Baseline Comparison), no single fixed linear or circular combination of these kinematic variables predicts heading as accurately or as consistently as the ANN, confirming that a simple, fixed mapping from these kinematic variables to heading is insufficient.
+%For the data we use here, there is a $\pm\pi$ ambiguity in the heading of the fly over its trajectory; therefore, the heading angle shown in the plots was first corrected according to the process in the next section. 
 
-\paragraph*{\textit{1.2.1~~Na\"ive Heading Correction.}}
-We first applied a simple heuristic inspired by two behavioral observations: (1) \emph{Drosophila} generally fly with their body axis aligned with the direction of thrust, and (2) over the temporal resolution of these measurements (0.01~s), the fly rarely changes its heading by more than $\frac{\pi}{2}$. We selected the initial orientation from two options --- either the measured orientation or the measured orientation $+\pi$ --- so as to maximize alignment with the thrust vector. For each subsequent frame we then chose the orientation (between the measured value and that value $+\pi$) that minimized the frame-to-frame heading difference. This procedure resolved most of the $\pi$-jump ambiguities; however, the heuristic failed for some dynamic segments, motivating the subsequent convex-optimization-based correction.
+\subsubsection*{Body Orientation Correction}
+The previously published body orientation measurements were captured using a top-down camera, and limited to body yaw orientation. At each frame containing a fly, the animal was approximated using an ellipse, and only the parameters of this ellipse were recorded. Thus, the body orientation data are accurate only modulo~$\pi$, resulting in discontinuous ``jumps'' of magnitude~$\pi$ throughout many trajectories. In addition, measurement noise occasionally corrupted a single frame outright. Therefore, prior to model training, we applied the correction and filtering steps described below; an example of their effect on a single trajectory is shown in Figure~\ref{fig:data_pipeline}A.
 
-\paragraph*{\textit{1.2.2~~Convex-Optimization--Based Heading Correction.}}
-To obtain a globally consistent and smooth heading signal, we formulated a mixed-integer convex optimization problem that selects, at each time step, which multiple of $\pi$ should be added to the raw orientation measurement.
-
-Let $\theta_t \in [-\pi,\pi)$ denote the raw body-orientation measurement at time index $t = 1,\dots,T$, and let $\varphi_t$ denote the corresponding thrust direction inferred from the flight trajectory. We introduce integer variables $k_t \in \{-1,0,1\}$ that encode whether the heading at time $t$ should be shifted by $-\pi$, $0$, or $+\pi$, and define the corrected heading as
-\[
-    \tilde{\theta}_t = \theta_t + \pi k_t.
-\]
-We further define the per-frame heading--thrust offset
-\[
-    \delta_t = \mathrm{wrap}(\theta_t - \varphi_t),
-\]
-where $\mathrm{wrap}(\cdot)$ maps angles into $[-\pi,\pi)$, and let $f_t$ denote the thrust magnitude at frame $t$, normalised by its trajectory mean $\bar{f} = \frac{1}{T}\sum_{t=1}^T f_t$. The corrected heading sequence $\{\tilde{\theta}_t\}_{t=1}^T$ is obtained by solving
-\begin{align}
-    \min_{\{k_t\}} \quad
-    & \alpha_1 \sum_{t=2}^T
-        \bigl| \tilde{\theta}_t - \tilde{\theta}_{t-1} \bigr|
-      \;+\;
-      \alpha_2 \sum_{t=1}^T
-        \frac{f_t}{\bar{f}} \bigl| \tilde{\theta}_t - \varphi_t \bigr|
-    \label{eq:heading_correction_opt} \\
-    \text{subject to} \quad
-    & k_t \in \{-1,0,1\}, \qquad t = 1,\dots,T. \nonumber
-\end{align}
-
-The first term is a total-variation penalty that discourages large frame-to-frame heading changes, promoting temporal smoothness. The second term encourages alignment of the corrected heading with the thrust direction $\varphi_t$, weighted at each frame by the normalised thrust magnitude $f_t / \bar{f}$. This weighting reflects the prior that body heading is most reliably constrained by thrust direction during high-force dynamic maneuvers, while the smoothness term is permitted to dominate during low-thrust gliding phases where the thrust direction is a less reliable heading cue.
-
-The weights $\alpha_1$ and $\alpha_2$ were tuned by visual inspection of trajectories containing clear saccades and rapid turns, verifying that the corrected heading tracks thrust direction during high-force maneuvers while remaining smooth during low-thrust gliding. Only the ratio $\alpha_2 / \alpha_1$ governs the trade-off; we fixed $\alpha_1 = 1$ and selected $\alpha_2$ accordingly. We solved \eqref{eq:heading_correction_opt} using the \texttt{cvxpy} modeling framework with the MOSEK solver.
-
-\paragraph*{\textit{1.2.3~~Trajectory Filtering.}}
-Following heading correction, trajectories that retained residual $\pi$-jumps above a threshold --- indicating that the correction algorithm could not resolve the ambiguity --- were removed from the dataset. Trajectories shorter than a minimum duration were also discarded to ensure that only sequences with adequate temporal context were retained for training and evaluation.
-
-\paragraph*{\textit{1.2.4~~Temporal Smoothing.}}
-To reduce remaining measurement jitter, we applied a two-stage smoothing procedure. First, the corrected heading sequence was unwrapped over time using a sliding-window algorithm that, at each frame, selects the $2\pi$-shifted representative of the angle most consistent with the recent trajectory history, producing a globally continuous heading curve. Second, the unwrapped signal was filtered with a Savitzky--Golay filter, with parameters tuned to suppress high-frequency noise while retaining the slower turning dynamics of interest. The resulting smoothed signal was then wrapped back to $[-\pi,\pi)$ and used as the target heading for neural network training.
-
-\subsection*{2.~~Feature Augmentation, Rotation Augmentation, and Delay Embedding}
-To construct the inputs for the neural network, we built two versions of the delay-embedded dataset from the preprocessed trajectories and concatenated them for training.
-
-In both versions, we applied a time-delay embedding over groundspeed, groundspeed angle, airspeed, airspeed angle, thrust, and thrust angle. Given a backward-looking window of length $W$, we formed the delay-embedded input vector for all times $t$ at which a complete $W$-step history was available. In the experiments reported here, $W = 4$, yielding $24$ input features per training example across $m = 6$ variables. The target output was the heading direction at time $t$, represented as $y_t = (\cos\theta_t,\; \sin\theta_t)$. Delay-embedded trajectories were computed independently for each fly and then concatenated within each version.
-
-The first version used the preprocessed kinematic variables directly, without any rotational transformation (\textit{unaugmented}). The second version applied a random rotational augmentation to each trajectory prior to delay embedding: a rotation angle was sampled uniformly from $[0,2\pi)$ and applied to all angular quantities, and all angles were wrapped to $[-\pi,\pi)$ (\textit{rotation-augmented}). The rotation augmentation prevents the estimator from implicitly encoding a preferred global wind direction. The two datasets were concatenated to form the final training set, so the model is exposed to both the original angular frame and rotationally diverse variants of each trajectory. As shown in Figure~\ref{fig:data_pipeline}C, the joint distributions of heading angle against groundspeed direction and airspeed direction are diffuse and non-linear, confirming that a simple linear mapping from these kinematic variables to heading is insufficient.
-
-\begin{figure}[h]
+\begin{figure}[!h]
     \centering
-    \includegraphics[width=\textwidth]{../figures/data_pipeline.pdf}
-    \caption{A. An example of the output heading correction algorithm used to resolve the ambiguity in heading measurements. B. Various kinematic measurements over the trajectory. C.  Joint distributions of heading angle versus groundspeed direction (left) and airspeed direction (right), shown as 2D log-scale histograms. The diffuse, non-linear structure of both relationships motivates the use of a neural network estimator.}
+    \includegraphics[width=\textwidth]{./figures/Fig1.pdf}
+    \caption{\textbf{Body orientation is not directly correlated with a single kinematic feature.} A. Example of the output heading correction algorithm used to resolve the ambiguity in available heading measurements. Black ellipse shows the recorded estimated ellipse, based on the original video data. Red triangle indicates the estimated heading orientation, which is only accurate up to a factor of $\pi$. Blue and green arrows indicate the air velocity and thrust vectors.  B. Various kinematic measurements for the trajectory shown in A (GS: groundspeed; AS: airspeed). C. Distribution of per-trajectory angular error, pooled across all flight directions, for the ANN and all 14 OLS/circular-regression baselines (see Methods, Baseline Comparison), sorted by median and shown as box plots (box: interquartile range; solid line: median; dashed line: mean; circles: individual trajectories beyond 1.5$\times$IQR). The ANN's error distribution is both lower and substantially narrower than that of any fixed linear or circular baseline, reflecting its comparatively consistent accuracy across flight-direction regimes (upwind, crosswind, and downwind; see accompanying notebook for the regime-stratified breakdown).}
     \label{fig:data_pipeline}
 \end{figure}
 
-\subsection*{3.~~Neural Network Training}
-We modeled the mapping from delay-embedded kinematic inputs to heading-direction outputs using a fully connected feedforward neural network (Figure~\ref{fig:model_performance}A). The network consisted of $L$ hidden layers, each with $N$ neurons and ReLU activations, followed by a linear output layer of dimension two corresponding to $(\cos\theta_t,\sin\theta_t)$. The input dimension was $n_{\text{in}} = mW = 24$ and the output dimension was $n_{\text{out}} = 2$. The model was implemented in Keras and trained with the Adam optimizer using mean-squared-error loss.
+\paragraph*{\textit{1. Naive Heading Correction}}
+We applied a heading-correction heuristic inspired by two behavioral observations: (1) \emph{Drosophila} generally fly with their body axis aligned with the direction of thrust, and (2) over the temporal resolution of these measurements (0.01~s), the fly does not change its heading by more than $\frac{\pi}{2}$. We selected the initial orientation from two options --- either the measured orientation or the measured orientation $+\pi$ --- so as to maximize alignment with the thrust vector, using a thrust-magnitude-weighted circular mean so that frames with larger, more reliable thrust contribute more to this decision than frames with near-zero thrust. For each subsequent frame we then chose the orientation (between the measured value and that value $+\pi$) that minimized the frame-to-frame heading difference, and the resulting corrected sequence was aligned a second time, again using a thrust-magnitude-weighted circular mean, to the overall thrust direction across the whole trajectory. A small number of trajectories contained a single frame whose orientation deviated sharply from both of its neighbors while those neighbors remained close to each other --- consistent with an isolated bad measurement rather than a genuine fast turn, which would also show a large deviation between the neighboring frames themselves; such frames were detected and replaced by linear interpolation between their nearest unaffected neighbors. This single correction step, without any subsequent optimization-based refinement, resolved the $\pi$-jump ambiguity for the large majority of trajectories.
 
-\subsubsection*{3.1~~Train/Test Split}
-The combined dataset (unaugmented and rotation-augmented examples concatenated) was split into training and withheld test sets. The same random split was applied to both versions so that trajectories in the test set were held out from both. During optimization, the training set was further partitioned internally by Keras using a validation split of $0.2$.
+\paragraph*{\textit{2. Trajectory Filtering}}
+Following heading correction, trajectories that retained a residual frame-to-frame jump above $\pi/2$ --- indicating that the correction procedure could not resolve the ambiguity --- were removed from the dataset. We did not apply any additional temporal smoothing: the corrected heading signal was already sufficiently smooth, and was used directly as the target heading for neural network training.
 
-\subsubsection*{3.2~~Hyperparameter Search and Model Fitting}
-To select the network architecture, we performed a grid search over the number of hidden layers $L \in \{1,2,3\}$ and neurons per hidden layer $N \in \{10,15,20\}$ using the \texttt{scikeras} wrapper and \texttt{GridSearchCV} with three-fold cross-validation and negative mean-squared-error as the scoring criterion. Each candidate model was trained for 150 epochs with a batch size of 256. The best-performing configuration was then trained on the full training set and evaluated on the withheld test set; model performance is shown in Figure~\ref{fig:model_performance}B.
 
-\subsection*{4.~~Prediction Wrapper and Post-Processing}
-During inference, heading predictions were generated by a wrapper function that applies the same feature construction and delay-embedding pipeline used during training. Given a new trajectory, the function first computes its delay-embedded representation, retaining only the $n_{\text{in}}$ input features required by the trained network. The estimator then produces a sequence of two-dimensional outputs $(\hat{x}_t, \hat{y}_t)$ on the unit circle.
+
+\subsection*{Artificial Neural Network Training}
+
+\subsubsection*{Baseline Comparison}
+To assess whether a substantially simpler model could already solve the heading-estimation problem, we fit ordinary least-squares (OLS) baselines directly on the available kinematic quantities --- thrust, airspeed, and groundspeed --- individually and in every combination (seven combinations in total), in two forms: a \textit{linear} form regressing $(\cos\theta_t,\sin\theta_t)$ on the raw Cartesian components of each quantity, so that both magnitude and direction enter linearly, and a \textit{circular} form regressing the same targets on only the unit-direction of each quantity (the standard degree-one trigonometric-polynomial formulation for circular--circular regression). All 14 baselines were fit on the same trajectory-grouped training split used for the ANN and evaluated on the same withheld test trajectories, stratified by flight-direction regime relative to the wind axis (upwind, crosswind, or downwind, classified from the true heading direction).
+
+\subsubsection*{Data augmentation}
+Because of the nonlinearities in the relationship between kinematic variables and the fly's heading (Figure~\ref{fig:data_pipeline}C; see also Baseline Comparison, below), we opted to train an artificial neural network (ANN) to predict heading from ground velocity and air velocity. Thrust was excluded from the set of model inputs, since the heading correction step above is itself referenced against the thrust direction; including thrust as a model input risked the network trivially recovering the correction target rather than learning a genuine kinematics-to-heading relationship. We likewise did not use a time-delay embedding of past frames: a sweep over embedding window sizes found no consistent accuracy benefit from including a history of past frames once seed-to-seed variability was accounted for, so each training example used only the current-frame values of groundspeed, groundspeed angle, airspeed, and airspeed angle ($m = 4$ input features). The target output was the heading direction at time $t$, represented as $y_t = (\cos\theta_t,\; \sin\theta_t)$.
+
+We built two versions of the feature set from the preprocessed trajectories and concatenated them for training. The first version used the input variables directly, without any rotational transformation (\textit{unaugmented}). The second version applied a random rotation to each trajectory (and wind), effectively randomizing the coordinate frame of the data.
+
+The rotation angles were sampled uniformly from $[0,2\pi)$ and applied to all angular quantities, and all angles were wrapped to $[-\pi,\pi)$. We combined this rotationally transformed dataset with the original data to form an augmented dataset (\textit{rotation-augmented}). The rotation augmentation prevents the estimator from implicitly encoding a preferred global wind direction. 
+%The two datasets were concatenated to form the final training set, so the model is exposed to both the original angular frame and rotationally diverse variants of each trajectory. 
+%As shown in Figure~\ref{fig:data_pipeline}C, the joint distributions of heading angle against groundspeed direction and airspeed direction are diffuse and non-linear, confirming that a simple linear mapping from these kinematic variables to heading is insufficient.
+
+\subsubsection*{Architecture and Loss Function Selection}
+An initial two-hidden-layer, 15-neuron architecture trained with mean-squared-error loss was not selected via a systematic search. To check whether a different configuration performs meaningfully better, we searched over both network architecture and loss function using grouped 3-fold cross-validation (\texttt{GroupKFold}, keyed on trajectory identity) restricted to the training trajectories only, so the withheld test set was never used for model selection. We first swept network depth (1--3 hidden layers) and width (10--30 neurons per layer) with the original mean-squared-error loss. Because the network's output layer is unit-normalized, this loss is mathematically equivalent, up to a constant factor, to $2(1-\cos\Delta\theta)$ for a target/prediction angular difference of $\Delta\theta$ -- whose gradient with respect to the network's output vanishes as $\Delta\theta \to 180^\circ$, giving the network little corrective signal on its most severe errors. We therefore separately tested an alternative loss, the angular distance itself ($\arccos$ of the dot product between target and predicted unit vectors, clipped for numerical stability), which does not have this vanishing-gradient property. We also tested a change to how each training frame is weighted: because a frame-level loss otherwise implicitly weights longer trajectories more heavily simply by contributing more rows, we additionally weighted each frame by the inverse of its trajectory's length, so that every trajectory contributes equally to the loss, matching the trajectory-level evaluation convention used throughout this study. Every candidate in every fold, across all three stages of this search, was trained for the same fixed 150 epochs used for the final model (Neural Network Training, below) regardless of its validation-loss trajectory, so no candidate was advantaged by a longer or checkpoint-selected training run. Finally, having identified the best-performing loss/weighting combination on the original architecture, we cross-validated the leading architectures under that combination to select a final configuration (Results).
+
+\subsubsection*{Neural Network Training}
+Complete trajectories, rather than individual frames, were split into training and withheld test sets (67\%/33\%) using a grouped shuffle split keyed on trajectory identity, so that no trajectory --- nor any of its rotationally augmented copies --- contributed frames to both sets. Rotational augmentation was applied only to the training trajectories after this split; the withheld test set contained only unaugmented trajectories. We modeled the mapping from kinematic inputs to heading-direction outputs using a fully connected feedforward neural network (Figure~\ref{fig:model_performance}A), using \texttt{keras} \citep{chollet2015keras}. The network consisted of 3 hidden layers of 30 units each with ReLU activations, followed by a linear output layer of dimension two corresponding to $\hat{\theta}=(\cos\theta_t,\sin\theta_t)$; this architecture, together with the angular-distance loss and per-trajectory length weighting described above, was selected by the cross-validated search rather than fixed in advance (Results). The input dimension was $n_{\text{in}} = m = 4$ and the output dimension was $n_{\text{out}} = 2$. The model was implemented in Keras and trained for 150 epochs with a batch size of 256, using the Adam optimizer. During optimization, the training trajectories were further partitioned (again by trajectory identity, not by frame) into a subtraining and validation split of 80\%/20\%. All random elements of this procedure --- the outer train/test split, the inner train/validation split, and network weight initialization --- were seeded for reproducibility (seed 42 for the outer split and the model reported below; seed 123 for the inner split, held fixed across every model trained in this study, including those described in the next two sections). No early stopping, dropout, weight regularization, or input standardization was used: every model was trained for the same fixed 150 epochs regardless of its validation-loss trajectory, using unmodified Keras/Adam defaults (learning rate $0.001$; Glorot-uniform weight initialization) and the four raw kinematic inputs in their native physical units. Table~\ref{tab:repro} summarizes this training configuration. To confirm that the reported performance did not depend on a fortunate weight initialization, we additionally trained four more models differing only in this seed (Results).
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Model training configuration and reproducibility details.} All random elements were explicitly seeded, and the same configuration was used for every model reported in this study (main model, leave-one-wind-speed-out models, and multi-seed robustness check) except where a seed itself was the variable of interest.}
+    \begin{tabular}{@{}p{4.7cm}p{9cm}@{}}
+        \toprule
+        Parameter & Value \\
+        \midrule
+        Architecture & 3 hidden layers x 30 neurons; selected via grouped cross-validated search (Methods, Results) \\
+        Loss function & Angular distance ($\arccos$ of target/prediction dot product), not mean-squared error; selected via the same search \\
+        Sample weighting & Each training frame weighted by 1/(length of its trajectory), so every trajectory contributes equally \\
+        Outer train/test split & 67\%/33\%, trajectory-grouped (seed 42) \\
+        Inner train/validation split & 80\%/20\%, trajectory-grouped (seed 123) \\
+        Multi-seed robustness check & seeds 42, 7, 13, 99, 123 \\
+        Epochs & 150, fixed (no early stopping; no checkpoint selection) \\
+        Batch size & 256 \\
+        Optimizer & Adam, unmodified Keras defaults (learning rate $0.001$; $\beta_1=0.9$; $\beta_2=0.999$) \\
+        Weight initialization & Glorot-uniform (kernel), zeros (bias); unmodified Keras defaults \\
+        Regularization & None (no dropout, L1/L2 penalty, or batch normalization) \\
+        Feature standardization & None (raw physical units) \\
+        Software & Python 3.12.12, keras 3.13.2, tensorflow 2.21.0, scikit-learn 1.8.0, statsmodels 0.15.0, numpy 2.4.3, pandas 3.0.1, scipy 1.17.1 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:repro}
+\end{table}
+
+\subsubsection*{Generalization Across Wind Speeds and Stratified Error Analysis}
+The trajectory-grouped train/test split described above is drawn at random from trajectories pooled across all three wind speeds (0.3, 0.4, and 0.6~m/s), and so does not by itself establish that the estimator generalizes to a wind condition excluded entirely from training. To test this directly, we repeated the full training procedure in a leave-one-wind-speed-out design: three times, each time training on two of the three wind speeds and evaluating exclusively on trajectories recorded at the third, held-out speed, with the same architecture, augmentation, and training procedure as the main model. We also related per-trajectory ANN error from the main (randomly split) model to a broader set of per-trajectory kinematic summaries --- mean airspeed, mean groundspeed, mean thrust magnitude, maximum turning rate, mean absolute slip angle (the angular offset between body heading and airspeed direction), and wind speed --- using Spearman rank correlation and decile binning.
+
+\subsection*{Prediction Wrapper and Post-Processing}
+During inference, heading predictions were generated by a wrapper function that applies the same feature construction pipeline used during training. Given a new trajectory, the function computes the required input features and retains only the $n_{\text{in}}$ inputs used by the trained network. The estimator then produces a sequence of two-dimensional outputs $y_t = (\cos\theta_t,\; \sin\theta_t)$ for every frame of the trajectory.
 
 To suppress frame-to-frame jitter and enforce the physical constraint that body orientation evolves smoothly, an optional light Gaussian smoothing filter ($\sigma = 2$) is applied to the predicted unit-vector components prior to conversion back to angular form.
 
-Because time-delay embedding requires $W{-}1$ previous observations, the first $W{-}1$ time steps of each trajectory cannot be predicted directly. To realign the prediction with the original trajectory length, the initial predicted heading value is prepended for the corresponding missing time steps, yielding a complete time-aligned predicted heading signal suitable for downstream analysis.
+\subsubsection*{Prediction Confidence and Input-Range Checking}
+Because heading is intrinsically harder to recover under some kinematic conditions than others (Results), we provide two lightweight tools for flagging individual predictions that are likely unreliable. First, we reuse the five independently-seeded models described above as an ensemble: for a given frame, we compute the mean resultant length $R \in [0,1]$ of the five models' predicted heading unit vectors, where $R = 1$ indicates unanimous agreement and values near 0 indicate substantial disagreement. Second, a simple range-checking utility (\texttt{check\_inputs\_in\_training\_range}, provided with the accompanying code) compares new groundspeed and airspeed values against the ranges observed in the training data and issues an explicit warning for any input falling outside this range, since such inputs represent extrapolation beyond the conditions the network was fit on.
 
-\section*{Results}
-
-We evaluated the NM model (\texttt{NM\_model}) on the withheld test set ($N = 3{,}313$ trajectories, $101{,}576$ frames) using mean absolute angular error (MAAE), computed as the mean of the smallest absolute angle between predicted and true heading directions. The model was evaluated separately on the unaugmented and rotation-augmented test splits. On the unaugmented test data, the model achieved a mean MAAE of $28.00^\circ$ and a median MAAE of $8.34^\circ$. On the rotation-augmented test data, it achieved a mean MAAE of $29.83^\circ$ and a median MAAE of $10.51^\circ$. The consistently low medians relative to the means indicate that predictions are accurate for the majority of frames, with a heavy tail driven by a subset of trajectories where heading is poorly constrained by the available kinematic features alone. Figure~\ref{fig:model_performance}B shows the 2D density plots of predicted versus true heading across all frames for both conditions; predictions concentrate along the identity line across the full $[-\pi, \pi)$ range, consistent with the quantitative results.
-
-\begin{figure}[h]
+\begin{figure}[h!]
     \centering
-    \includegraphics[width=0.5\textwidth]{../figures/Fig2.pdf}
-    \caption{A. An svg image of the neural network with layers, outputs, etc., with a visual on how it performs on a trajectory below. B. 2D log-scale density histogram of predicted versus true heading angle across all $101{,}576$ frames from $3{,}313$ trajectories, evaluated using the NM model (\texttt{NM\_model}). Concentration along the diagonal indicates accurate heading recovery across the full $[-\pi, \pi)$ range.}
+    \includegraphics[width=0.9\textwidth]{./figures/Fig2.pdf}
+        \caption{\textbf{A neural network correctly estimates body orientation from translational trajectories.} A. Artificial neural network (ANN) diagram representative of the one used in our training, including hidden layers and two outputs. Our full network included 4 inputs, 3 hidden layers, and 30 neurons in each hidden layer. B. Heading estimates from our ANN along a translational trajectory (blue) compared to the ground velocity direction (red) used as a proxy for heading. Note how the two estimates diverge substantially during the rapid turn, but are well matched at other points along the trajectory. C. 2D log-scale density histogram of predicted versus true heading angle across the withheld test set. Concentration along the diagonal indicates accurate heading recovery across the full $[-\pi, \pi)$ range. Left plot shows the performance of the network trained on the base (un-augmented) dataset, whereas the right plot shows the performance on the rotationally augmented dataset. The high density of points at a heading of $\pi$ radians in the left plot is there because the majority of flies were oriented upwind.
+        }
     \label{fig:model_performance}
 \end{figure}
 
+\section*{Results}
+Figure \ref{fig:model_performance}B shows an example trajectory with naive heading estimates (i.e. aligned with the ground velocity vector) and the ANN predicted headings overlaid. Note how the ANN estimator yields a different heading estimate compared to the ground velocity direction during dynamic maneuvers.
+
+Before evaluating the ANN, we first asked whether a fixed linear or circular combination of the same kinematic quantities could already predict heading well. Pooled across the withheld test trajectories, the best such baseline (a linear combination of thrust and airspeed) reached a respectable median per-trajectory error of $9.91^\circ$. However, stratifying this same baseline by flight-direction regime revealed that this pooled figure concealed a large, regime-dependent failure: $55.75^\circ$ upwind and $33.74^\circ$ crosswind, versus only $5.58^\circ$ downwind. Every one of the 14 linear/circular baselines we tested showed the same qualitative pattern (Table~\ref{tab:baseline_regime}), reflecting the fact that groundspeed --- and hence groundspeed direction --- is best determined when a tailwind adds to the fly's own forward airspeed (downwind flight), and is small and poorly determined otherwise (upwind and crosswind flight). No single fixed set of regression coefficients can be accurate in both regimes at once.
+
+Before training the ANN reported below, we checked whether an initial 2-layer/15-neuron architecture and mean-squared-error loss were leaving accuracy on the table (Methods, Architecture and Loss Function Selection). A grouped cross-validated sweep over network depth and width, still using mean-squared-error loss, found that a wider network (2 layers, 30 neurons) reduced the cross-validated median error from $7.85^\circ$ to $6.66^\circ$. Independently, replacing mean-squared-error with the angular-distance loss and per-trajectory length weighting -- tested on the original 2-layer/15-neuron architecture to isolate their effect from network size -- reduced cross-validated error further still, from $7.57^\circ$ (mean-squared-error under this same cross-validation) to $5.63^\circ$ with both changes combined. Re-ranking the leading architectures under this winning loss/weighting combination (Table~\ref{tab:archsearch}) selected a final configuration of 3 hidden layers, 30 neurons per layer, angular-distance loss, and per-trajectory length weighting ($5.21^\circ$ cross-validated median error) -- the configuration used for the remainder of this study. Evaluated on the held-out test set, never used during this search, this configuration reached a median error of $5.35^\circ$ (95\% CI: $4.95^\circ$--$5.74^\circ$), a $34\%$ relative reduction from the $8.12^\circ$ obtained with the original architecture and loss on the same test set.
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Architecture selection under the winning loss/weighting combination.} Grouped 3-fold cross-validated median per-trajectory error (training trajectories only) for the leading architectures identified in the depth/width sweep, each retrained with the angular-distance loss and per-trajectory length weighting. The selected configuration (bottom of table, lowest error) is used for the remainder of this study.}
+    \begin{tabular}{@{}rrrr@{}}
+        \toprule
+        Hidden layers & Neurons/layer & CV median error (deg) & 95\% CI \\
+        \midrule
+        1 & 30 & 7.14 & [6.80, 7.54] \\
+        2 & 10 & 5.65 & [5.31, 6.00] \\
+        2 & 30 & 5.57 & [5.35, 6.00] \\
+        2 & 15 & 5.52 & [5.14, 5.87] \\
+        2 & 20 & 5.36 & [5.08, 5.68] \\
+        \textbf{3} & \textbf{30} & \textbf{5.21} & \textbf{[4.97, 5.65]} \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:archsearch}
+\end{table}
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Per-trajectory angular error (median, degrees) by flight-direction regime.} All 14 OLS/circular-regression baselines (Methods, Baseline Comparison) and the ANN, sorted from worst to best overall (pooled) performance. The ANN (bottom row) is now more accurate than every baseline in all three regimes, including downwind.}
+    \begin{tabular}{@{}lrrrr@{}}
+        \toprule
+        Model & Overall & Upwind & Crosswind & Downwind \\
+        \midrule
+        Linear: thrust & 18.39 & 115.11 & 57.03 & 10.83 \\
+        Circular: thrust & 18.06 & 64.20 & 54.87 & 11.41 \\
+        Circular: ground & 16.74 & 112.47 & 40.71 & 7.74 \\
+        Circular: thrust+ground & 12.71 & 43.54 & 38.34 & 7.31 \\
+        Linear: ground & 11.22 & 60.36 & 37.42 & 5.50 \\
+        Linear: air+ground & 11.07 & 53.35 & 35.49 & 5.40 \\
+        Linear: air & 10.94 & 56.30 & 35.65 & 5.63 \\
+        Circular: thrust+air & 10.85 & 45.87 & 39.81 & 7.13 \\
+        Circular: air & 10.57 & 46.05 & 44.67 & 6.41 \\
+        Circular: air+ground & 10.56 & 35.29 & 37.55 & 6.52 \\
+        Circular: thrust+air+ground & 10.18 & 34.62 & 33.85 & 6.47 \\
+        Linear: thrust+ground & 9.99 & 50.77 & 33.93 & 5.14 \\
+        Linear: thrust+air+ground & 9.95 & 48.87 & 33.46 & 5.29 \\
+        Linear: thrust+air & 9.91 & 55.75 & 33.74 & 5.58 \\
+        \textbf{ANN (ours)} & \textbf{5.35} & \textbf{11.84} & \textbf{21.93} & \textbf{4.85} \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:baseline_regime}
+\end{table}
+
+We then evaluated the selected ANN configuration, trained with rotation augmentation, on the same withheld, trajectory-grouped test set ($N = 1{,}099$ trajectories, $37{,}389$ frames). We report the trajectory-level angular error: for each test trajectory we computed the median absolute angular error across its frames, then summarized this distribution of per-trajectory values across the test set (with a 95\% confidence interval obtained by bootstrap resampling of trajectories). The ANN achieved an overall median per-trajectory error of $5.35^\circ$ (95\% CI: $4.95^\circ$--$5.74^\circ$), close to half the best pooled baseline above. Stratified by the same flight-direction regimes, the ANN reached $11.84^\circ$ upwind, $21.93^\circ$ crosswind, and $4.85^\circ$ downwind (Table~\ref{tab:baseline_regime}) --- roughly a fifth of the best baseline's upwind error and about two-thirds of its crosswind error, while now also modestly beating it downwind. Unlike the fixed baselines, the ANN is not restricted to one set of coefficients across the whole flight repertoire, allowing it to remain usable in the upwind and crosswind regimes where translational kinematics alone are least informative about body orientation. Figure~\ref{fig:model_performance}C shows the 2D density plot of predicted versus true heading across the test set; predictions are concentrated along the identity line across the full $[-\pi, \pi)$ range, consistent with this quantitative analysis.
+
+To confirm that this result did not depend on a single fortunate weight initialization, we retrained the model four additional times with different random seeds (Methods). Median per-trajectory error across the five runs was $5.39^\circ \pm 0.18^\circ$ (range $5.16^\circ$--$5.57^\circ$; Table~\ref{tab:multiseed}), confirming that the reported performance is representative rather than a lucky draw.
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Model robustness across five independently seeded training runs.} All five runs use the identical architecture, split, and augmentation described in Methods, differing only in the seed controlling weight initialization and (jointly with Table~\ref{tab:repro}'s seed 123) the inner train/validation split.}
+    \begin{tabular}{@{}lrr@{}}
+        \toprule
+        Seed & Median error (deg) & Mean error (deg) \\
+        \midrule
+        42 (reported above) & 5.35 & 18.00 \\
+        7 & 5.16 & 17.84 \\
+        13 & 5.30 & 17.46 \\
+        99 & 5.55 & 18.27 \\
+        123 & 5.57 & 18.05 \\
+        \midrule
+        Mean $\pm$ SD & $5.39 \pm 0.18$ & $17.92 \pm 0.30$ \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:multiseed}
+\end{table}
+
+We next asked whether the model generalizes to a wind speed withheld entirely from training. Leave-one-wind-speed-out testing (Table~\ref{tab:lowo}) generalized well when 0.3 or 0.4~m/s was held out (overall median error $5.52^\circ$ and $5.05^\circ$, respectively, both close to or better than the randomly-split result above), but degraded sharply when 0.6~m/s --- the fastest wind condition --- was held out: overall median error rose to $6.93^\circ$, driven almost entirely by upwind flight, where median error reached $124.72^\circ$ (worse than chance -- predicted headings point, on average, closer to the wrong direction than the right one), with crosswind flight also degrading to $36.29^\circ$. Downwind performance remained comparatively stable across all three held-out conditions ($5.3^\circ$--$5.8^\circ$). Consistent with this, per-trajectory ANN error correlated most strongly with mean slip angle (Spearman $\rho = 0.78$), followed by turning rate ($\rho = 0.56$), and more weakly with airspeed ($\rho = -0.54$) and with groundspeed and thrust magnitude ($\rho \approx -0.42$ each); within the randomly-split test set, median error was similar, and lower, across all three wind speeds ($4.8^\circ$--$5.8^\circ$), so the leave-one-wind-out degradation reflects extrapolating to an entirely unseen condition rather than a general difficulty with faster wind.
+
+Notably, this 0.6-m/s-held-out upwind failure is more severe than it was for the original 2-layer/15-neuron, mean-squared-error configuration ($124.72^\circ$ versus $95.05^\circ$), even though the selected configuration is substantially more accurate everywhere else. We attribute this to the loss function change: because the angular-distance loss does not have mean-squared-error's vanishing gradient near $180^\circ$ (Methods, Architecture and Loss Function Selection), it sharpens predictions wherever the training data contains some relevant signal -- but for the 0.6-m/s-upwind condition specifically, where no training trajectory resembles the test condition at all, that same sharpening appears to make the model's incorrect predictions more confident rather than more hedged. Accuracy improvements from the loss/architecture search therefore did not extend to, and by this evidence may have worsened, worst-case extrapolation to a wind condition entirely absent from training -- reinforcing the case for the confidence-signal and input-range-check tools described below.
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Leave-one-wind-speed-out results.} Median per-trajectory angular error (with 95\% bootstrap confidence interval, resampling trajectories) when training on two of the three wind speeds and testing exclusively on trajectories recorded at the third, held-out speed. Overall rows (bold) pool all three regimes for that held-out condition.}
+    \begin{tabular}{@{}llrr@{}}
+        \toprule
+        Held-out wind speed (m/s) & Regime & N & Median error (deg) [95\% CI] \\
+        \midrule
+        \multirow{4}{*}{0.3} & \textbf{Overall} & \textbf{1265} & \textbf{5.52 [5.18, 6.15]} \\
+        & Upwind & 420 & 9.07 [6.60, 13.02] \\
+        & Crosswind & 782 & 15.98 [13.24, 20.57] \\
+        & Downwind & 922 & 5.64 [5.23, 6.15] \\
+        \addlinespace
+        \multirow{4}{*}{0.4} & \textbf{Overall} & \textbf{1062} & \textbf{5.05 [4.60, 5.57]} \\
+        & Upwind & 251 & 6.17 [4.83, 10.98] \\
+        & Crosswind & 603 & 16.52 [14.30, 19.63] \\
+        & Downwind & 863 & 5.28 [4.59, 5.82] \\
+        \addlinespace
+        \multirow{4}{*}{0.6} & \textbf{Overall} & \textbf{999} & \textbf{6.93 [6.46, 7.52]} \\
+        & Upwind & 160 & 124.72 [99.93, 137.93] \\
+        & Crosswind & 511 & 36.29 [32.12, 42.52] \\
+        & Downwind & 920 & 5.76 [5.30, 6.11] \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:lowo}
+\end{table}
+
+The ensemble-agreement signal described above (Methods) was informative in practice, and more so than under the original configuration: trajectories in the lowest agreement quartile had a median error of $16.4^\circ$, more than five times that of the highest-agreement quartile ($3.0^\circ$; Spearman $\rho = -0.53$ between agreement and error across the withheld test set, up from $\rho=-0.43$ previously; Table~\ref{tab:ensemble}), indicating that inter-model disagreement is a usable, ground-truth-free signal for flagging individual predictions that warrant additional scrutiny. This signal captures within-distribution ambiguity rather than out-of-distribution extrapolation, however: the leave-one-wind-out failure above (0.6~m/s, upwind) is a case where all five ensemble members, trained on the same 0.3/0.4~m/s data, could plausibly agree with each other while still being collectively wrong -- which is why the input-range check below is a necessary complement rather than a redundant one.
+
+\begin{table}[h!]
+    \centering
+    \caption{\textbf{Ensemble-agreement calibration.} Per-trajectory error binned by quartile of the five-model mean resultant length $R$ ($R=1$: unanimous agreement across the five seeded models in Table~\ref{tab:multiseed}; $R$ near 0: substantial disagreement).}
+    \begin{tabular}{@{}lrrrr@{}}
+        \toprule
+        Agreement quartile & N & Median $R$ & Median error (deg) & Mean error (deg) \\
+        \midrule
+        Q1 (lowest) & 276 & 0.9985 & 16.44 & 39.95 \\
+        Q2 & 274 & 0.9995 & 5.99 & 16.46 \\
+        Q3 & 274 & 0.9997 & 3.96 & 8.46 \\
+        Q4 (highest) & 275 & 0.9999 & 2.95 & 7.00 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:ensemble}
+\end{table}
+
+% \section*{Discussion}
+
+% The estimator developed here provides a practical tool for reconstructing plausible body yaw orientations from translational trajectory data when direct measurements of body orientation are unavailable. This capability can enable analysis of trajectory datasets in which only center-of-mass motion was recorded, allowing researchers to investigate questions related to sensory sampling, navigation strategies, and behavioral control that depend on heading direction. Although the direction of the ground or air velocity vector is sometimes used as a proxy for heading in trajectory analysis, insects can exhibit substantial misalignment between body axis and velocity direction \citep{van2014plume}, particularly during turning maneuvers \citep{muijres2014flies}, making direct estimates of body orientation valuable for behavioral interpretation.
+
+% At the same time, several limitations should be considered when applying this approach. The model should be used with caution when extrapolating to flight scenarios that differ substantially from the conditions represented in the training set, such as different wind regimes, environmental contexts, or species with distinct flight dynamics. In addition, the present estimator predicts only the yaw component of body orientation and does not capture roll or pitch dynamics. Extending this approach to infer full three-dimensional orientation would require datasets that include multi-view body pose measurements or additional biomechanical constraints.
+
 \section*{Discussion}
+ 
+% PARAGRAPH 1: What the estimator does and why it matters
+The estimator developed here provides a practical tool for reconstructing plausible body yaw orientations from translational trajectory data when direct measurements of orientation are unavailable. 
+Although ground or air velocity direction can be used as a proxy for heading, the relationship between
+body orientation and velocity direction is neither fixed nor linear. Van Breugel et al. \citep{van2014plume} showed that flies cast crosswind across a broad distribution of body orientations, with slip angle varying systematically with airspeed: fast-flying individuals tend to align body axis with velocity, whereas slow-flying individuals may fly nearly sideways. This speed-dependent coupling means that a naive velocity proxy for heading is least reliable precisely during the low-speed, turning portions of trajectories that are often of greatest behavioral interest.
+By estimating heading information from center-of-mass kinematics alone, our approach presented here enables analyses that would otherwise require dedicated body-orientation hardware. For example, estimates of body orientation would make it possible to reconstruct an estimate of a fly eye view of the world \citep{straw2011multi}. 
+To make these views even more accurate, our general approach could be extended to estimate the head orientation of a fly based on their body turning kinematics \citep{cellini2021mechanisms}. These fly eye views of the world can be used to play back relatively accurate visual scenes to tethered flies to study the neurophysiology along realistic flight trajectories \citep{kern2005function, boeddeker2005responses}, using tethered virtual reality systems \citep{kaushik2020characterizing}, or for developing biologically plausible models for how flies estimate critical navigation variables \citep{may2025compact}. 
 
-The estimator developed here provides a practical tool for reconstructing plausible body yaw orientations from translational trajectory data when direct measurements of body orientation are unavailable. This capability can enable reanalysis of existing trajectory datasets in which only center-of-mass motion was recorded, allowing researchers to investigate questions related to sensory sampling, navigation strategies, and behavioral control that depend on heading direction. While the direction of the velocity vector is sometimes used as a proxy for heading in trajectory analyses, insects can exhibit substantial misalignment between body axis and velocity direction, particularly during turning maneuvers, making direct estimates of body orientation valuable for behavioral interpretation.
 
-At the same time, several limitations should be considered when applying this approach. The model should be used with caution when extrapolating to flight scenarios that differ substantially from the conditions represented in the training set (e.g. changing ambient wind directions, environmental lighting, etc...), such as different wind regimes, environmental contexts, or species with distinct flight dynamics. In addition, the present estimator predicts only the yaw component of body orientation and does not capture roll or pitch dynamics. Extending this approach to infer full three-dimensional orientation would likely require datasets that include multi-view body pose measurements or additional biomechanical constraints.
+% PARAGRAPH 2: Understanding the errors
+Our body orientation estimation network is fundamentally limited by the training data, and prediction error was not uniform across flight conditions. Errors were concentrated during portions of trajectories in which flies were heading upwind or crosswind, where the kinematic cues available to the estimator are least informative about body orientation; performance was consistently best when flies were heading downwind. This pattern is consistent with the geometry of groundspeed itself: during downwind flight, the tailwind adds to the fly's own forward airspeed, so groundspeed is large and its direction is a stable, well-determined cue; upwind and crosswind, groundspeed can be small and dominated by drift relative to the fly's own airspeed, making its direction --- and the kinematic inputs derived from it --- an intrinsically noisier cue for body orientation. This same pattern was evident even for simple linear and circular regression baselines fit directly on the kinematic inputs (see Methods, Baseline Comparison), which is what motivated using a neural network rather than a fixed linear mapping in the first place: a network can, in principle, learn a different effective relationship between kinematics and heading in each flight regime, whereas a fixed set of regression coefficients cannot. This account is also supported quantitatively: across the withheld test set, per-trajectory error correlates most strongly with slip angle and turning rate (Results), both of which are largest precisely when groundspeed magnitude and direction are least informative.
+It is also worth noting that model performance was quantified on a withheld test set drawn from the same dataset used for training \citep{van2014plume} --- specifically, the subset of each trajectory that fell
+within the narrow field of view of the body-orientation camera.
+Performance on the remainder of each trajectory, where no ground-truth orientation data exist,
+cannot be directly validated. Users applying the estimator to new datasets should interpret its outputs as plausible estimates rather than verified measurements.
+ 
+% PARAGRAPH 3: Limitations and scope
+Our model was trained exclusively on \textit{Drosophila} flying in a laboratory wind tunnel across three wind speeds \citep{van2014plume}. Thus, our model should be applied with caution to flight scenarios that differ substantially from these conditions, including different wind regimes, environmental contexts, or species with distinct flight dynamics --- a caution supported empirically by our leave-one-wind-speed-out analysis (Results), which found that generalization to a wind speed excluded entirely from training can degrade substantially, particularly for upwind flight at the fastest wind speed tested, where median error exceeded $120^\circ$. This failure mode is not simply a byproduct of overall model accuracy: the architecture and loss function that most improved in-distribution performance (Results, Architecture and Loss Function Selection) did not improve, and by this evidence may have worsened, worst-case extrapolation to a wind condition entirely absent from training, since a loss with a non-vanishing gradient near large errors sharpens predictions even where the input is unlike anything seen during training. Accuracy and reliable extrapolation are therefore not the same target, and improving one does not guarantee the other. To help users identify individual predictions that fall in this kind of unreliable regime, we provide an ensemble-agreement confidence signal and a utility that warns when new inputs fall outside the range of conditions used for training (Methods); neither substitutes for validation against ground truth where it is available, but both are usable at inference time when it is not. Our estimator also predicts only the yaw component of body orientation and does not capture roll or pitch; extending this approach to three-dimensional body pose would require datasets with multi-view body-pose measurements or additional biomechanical constraints, e.g. \citep{muijres2014flies}. Within its scope, however, the estimator may be most immediately useful for re-analysis of existing trajectory datasets in which body orientation was not measured --- including large-scale or field-based studies \citep{stentiford2025precise} where dedicated orientation optics are impractical --- allowing researchers to revisit such data with heading-dependent analyses that were previously out of reach.
 
-\section*{Future Work}
-Worth including this section for a Methods paper?
+
+\section*{Author contributions}
+N.M. and F.v.B. conceived of the project, N.M. analyzed the data and constructed the ANN models, N.M., C.M., and K.N. refined the ANN model. N.M. and F.v.B. wrote the paper with feedback from C.M. and K.N.
+
+
+\section*{Data and code availability} 
+Data and code will be made available upon publication.
+
+\section*{Funding}
+This work was supported by NIH BRAIN (1R01NS136988 to F.v.B.) and the NSF AI Institute in Dynamics (2112085 to F.v.B.). 
+
 \bibliography{main}
 
 \end{document}
-
