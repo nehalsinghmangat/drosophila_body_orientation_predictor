@@ -973,13 +973,13 @@ def sliding_window(df, slide=None, w=None, n_window_limit=None, seed=None, aug_c
 # Neural Network
 # ============================================================
 
-def create_model(n_input: int, n_output: int, neurons: int = 50, layers: int = 1):
+def create_model(n_input: int, n_output: int, neurons: int = 50, layers: int = 1, loss='mean_squared_error'):
     """
     Build a fully-connected Keras model for heading prediction.
 
     Architecture: Dense(relu) × layers → Dense(linear) → L2-normalisation output.
     The L2-normalisation layer hard-constrains outputs to the unit circle.
-    Loss: mean_squared_error. Optimizer: Adam.
+    Optimizer: Adam.
 
     Parameters
     ----------
@@ -991,6 +991,14 @@ def create_model(n_input: int, n_output: int, neurons: int = 50, layers: int = 1
         Neurons per hidden layer.
     layers : int
         Number of hidden layers.
+    loss : str or callable
+        Keras loss to compile with. Defaults to 'mean_squared_error'. For unit-normalized
+        outputs, plain MSE is equivalent (up to a constant factor) to a cosine/circular-distance
+        loss, since ||u-v||^2 = 2(1-cos(delta_theta)) for unit vectors u, v -- but its gradient
+        vanishes as the error approaches 180 degrees. `geodesic_loss` (below) uses the true
+        angular distance instead, which does not vanish there, and was found to noticeably
+        improve trajectory-level accuracy (see the accompanying notebook's hyperparameter/loss
+        sweep) -- pass `loss=geodesic_loss` to use it.
 
     Returns
     -------
@@ -999,14 +1007,81 @@ def create_model(n_input: int, n_output: int, neurons: int = 50, layers: int = 1
     from keras.models import Sequential
     from keras.layers import Dense, UnitNormalization
 
+    register_geodesic_loss()
+
     model = Sequential()
     model.add(Dense(neurons, input_dim=n_input, activation='relu'))
     for _ in range(layers - 1):
         model.add(Dense(neurons, activation='relu'))
     model.add(Dense(n_output, activation='linear'))
     model.add(UnitNormalization(axis=-1))
-    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mean_absolute_error'])
+    model.compile(loss=loss, optimizer='adam', metrics=['mean_absolute_error'])
     return model
+
+
+def geodesic_loss(y_true, y_pred):
+    """
+    True angular distance (radians) between unit-vector heading targets and predictions.
+
+    Computed as arccos(y_true . y_pred), clipped for numerical stability. Unlike plain MSE on
+    unit-normalized outputs (which is equivalent to 2(1-cos(delta_theta)) and has a gradient
+    that vanishes as delta_theta approaches 180 degrees), this loss's gradient does not vanish
+    near the largest errors, which empirically improved trajectory-level accuracy substantially
+    over MSE (see the accompanying notebook).
+
+    Parameters
+    ----------
+    y_true, y_pred : array-like, shape (n, 2)
+        Unit vectors (cos(theta), sin(theta)).
+
+    Returns
+    -------
+    Tensor of per-sample angular distances (radians), shape (n,).
+    """
+    import keras.ops as kops
+
+    dot = kops.sum(y_true * y_pred, axis=-1)
+    dot = kops.clip(dot, -1.0 + 1e-6, 1.0 - 1e-6)
+    return kops.arccos(dot)
+
+
+def register_geodesic_loss():
+    """
+    Register `geodesic_loss` with Keras so saved models that use it can be reloaded with a
+    plain `keras.models.load_model(path)` call, without passing `custom_objects=`.
+
+    Called automatically by `create_model`. Idempotent -- call it directly before
+    `keras.models.load_model(...)` in code that loads a `geodesic_loss`-trained model without
+    having called `create_model` first in that process (e.g. loading a saved ensemble).
+    """
+    import keras
+
+    keras.saving.get_custom_objects()['geodesic_loss'] = geodesic_loss
+
+
+def trajectory_length_sample_weights(trajec_objid):
+    """
+    Per-frame sample weights that make every trajectory contribute equally to training.
+
+    Without this, a frame-level loss implicitly weights long trajectories more heavily simply
+    because they contribute more rows; weighting each frame by 1/len(its trajectory) instead
+    makes every trajectory count equally, matching the trajectory-level (not frame-level)
+    evaluation convention used throughout this project.
+
+    Parameters
+    ----------
+    trajec_objid : array-like
+        Trajectory identifier for each row (frame) in the training set, e.g.
+        `train_df['trajec_objid'].values`.
+
+    Returns
+    -------
+    numpy.ndarray of per-row weights, shape matching `trajec_objid`.
+    """
+    import pandas as pd
+
+    counts = pd.Series(trajec_objid).groupby(pd.Series(trajec_objid)).transform('count')
+    return (1.0 / counts).values
 
 
 def check_inputs_in_training_range(feature_values: dict, training_ranges: dict, verbose: bool = True):
