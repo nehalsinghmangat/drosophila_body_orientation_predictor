@@ -1009,6 +1009,66 @@ def create_model(n_input: int, n_output: int, neurons: int = 50, layers: int = 1
     return model
 
 
+def check_inputs_in_training_range(feature_values: dict, training_ranges: dict, verbose: bool = True):
+    """
+    Warn when new inputs fall outside the range the model was trained on.
+
+    The model was fit on translational kinematics observed at wind speeds of
+    0.3-0.6 m/s; magnitude-type inputs (e.g. groundspeed, airspeed, thrust) seen
+    well outside that range are extrapolation, and predictions for those frames
+    should be treated with reduced confidence. This check is intended for
+    magnitude features only -- angular features (e.g. groundspeed_angle) are
+    circular and have no meaningful "out of range" outside [-pi, pi].
+
+    Parameters
+    ----------
+    feature_values : dict[str, array-like]
+        Mapping from feature name to the new input values to check, e.g.
+        {'groundspeed': X[:, 0], 'airspeed': X[:, 2]}.
+    training_ranges : dict[str, tuple[float, float]]
+        Mapping from feature name to the (min, max) observed for that feature in
+        the training data, e.g. computed once as
+        {'groundspeed': (train_df['groundspeed'].min(), train_df['groundspeed'].max())}.
+    verbose : bool
+        If True, print a human-readable warning summarizing how many rows/which
+        features are out of range.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Boolean frame, one column per feature in `feature_values`, True where
+        that row's value falls outside the corresponding training range.
+    """
+    import numpy as np
+    import pandas as pd
+
+    out_of_range = {}
+    for name, values in feature_values.items():
+        values = np.asarray(values)
+        if name in training_ranges:
+            lo, hi = training_ranges[name]
+            out_of_range[name] = (values < lo) | (values > hi)
+        else:
+            out_of_range[name] = np.zeros(len(values), dtype=bool)
+    result = pd.DataFrame(out_of_range)
+
+    if verbose:
+        n_flagged = result.any(axis=1).sum()
+        if n_flagged:
+            print(f"WARNING: {n_flagged}/{len(result)} input rows have at least one feature "
+                  f"outside the training data's observed range. Predictions for these rows "
+                  f"should be treated with reduced confidence.")
+            for name in result.columns:
+                n_feat = int(result[name].sum())
+                if n_feat and name in training_ranges:
+                    lo, hi = training_ranges[name]
+                    print(f"  {name}: {n_feat} row(s) out of range (training range [{lo:.4g}, {hi:.4g}])")
+        else:
+            print("All inputs fall within the training data's observed range.")
+
+    return result
+
+
 # ============================================================
 # Visualization
 # ============================================================
