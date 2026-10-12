@@ -1,0 +1,15 @@
+\begin{table}[h!]
+    \centering
+    \caption{ANN per-trajectory angular error (deg) on the held-out test set, overall and by flight regime, with the best baseline median in each regime for comparison.}
+    \label{tab:ann_regime}
+    \begin{tabular}{@{}lrrrrrl@{}}
+        \toprule
+        Regime & n trajectories & Median [95\% CI] & Mean & IQR & \% > 15° & Best baseline (median) \\
+        \midrule
+        Overall & 1099 & 5.35 [4.95, 5.74] & 18.00 & 2.71–13.70 & 23.9 & 8.52  (mobius: air) \\
+        Upwind & 261 & 11.84 [8.22, 17.24] & 59.73 & 3.55–148.22 & 44.8 & 31.97  (mobius: air) \\
+        Crosswind & 627 & 21.93 [17.23, 26.13] & 40.57 & 6.91–62.67 & 57.1 & 26.42  (mobius: air) \\
+        Downwind & 891 & 4.85 [4.44, 5.25] & 14.46 & 2.52–11.02 & 19.8 & 5.14  (linear: thrust+ground) \\
+        \bottomrule
+    \end{tabular}
+\end{table}

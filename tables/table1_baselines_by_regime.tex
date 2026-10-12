@@ -1,0 +1,29 @@
+\begin{table}[h!]
+    \centering
+    \caption{Median per-trajectory angular error (deg) of every linear, circular and M\"obius baseline and of the ANN on the held-out test trajectories, overall and by flight regime. Sorted by overall error, worst first.}
+    \label{tab:baseline_regime}
+    \begin{tabular}{@{}llrrrr@{}}
+        \toprule
+        Model & Inputs & Overall & Upwind & Crosswind & Downwind \\
+        \midrule
+        Möbius circular regression & thrust & 19.40 & 67.39 & 49.16 & 12.64 \\
+        Linear OLS & thrust & 18.39 & 115.11 & 57.03 & 10.83 \\
+        Circular OLS & thrust & 18.06 & 64.20 & 54.87 & 11.41 \\
+        Möbius circular regression & ground & 17.04 & 47.33 & 47.57 & 8.84 \\
+        Circular OLS & ground & 16.74 & 112.47 & 40.71 & 7.74 \\
+        Circular OLS & thrust+ground & 12.71 & 43.54 & 38.34 & 7.31 \\
+        Linear OLS & ground & 11.22 & 60.36 & 37.42 & 5.50 \\
+        Linear OLS & air+ground & 11.07 & 53.35 & 35.49 & 5.40 \\
+        Linear OLS & air & 10.94 & 56.30 & 35.65 & 5.63 \\
+        Circular OLS & thrust+air & 10.85 & 45.87 & 39.81 & 7.13 \\
+        Circular OLS & air & 10.57 & 46.05 & 44.67 & 6.41 \\
+        Circular OLS & air+ground & 10.56 & 35.29 & 37.55 & 6.52 \\
+        Circular OLS & thrust+air+ground & 10.18 & 34.62 & 33.85 & 6.47 \\
+        Linear OLS & thrust+ground & 9.99 & 50.77 & 33.93 & 5.14 \\
+        Linear OLS & thrust+air+ground & 9.95 & 48.87 & 33.46 & 5.29 \\
+        Linear OLS & thrust+air & 9.91 & 55.75 & 33.74 & 5.58 \\
+        Möbius circular regression & air & 8.52 & 31.97 & 26.42 & 6.55 \\
+        ANN & groundspeed + airspeed & 5.35 & 11.84 & 21.93 & 4.85 \\
+        \bottomrule
+    \end{tabular}
+\end{table}

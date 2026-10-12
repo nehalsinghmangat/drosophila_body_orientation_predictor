@@ -1,0 +1,33 @@
+\begin{table}[h!]
+    \centering
+    \caption{Grouped cross-validation results used to select the ANN architecture and loss.}
+    \label{tab:selection}
+    \begin{tabular}{@{}llrrr@{}}
+        \toprule
+        Panel & Configuration & n & CV median [95\% CI] & IQR \\
+        \midrule
+        A: architecture (MSE) & 2 × 30 & 2227 & 6.66 [6.36, 7.38] & 3.55–17.59 \\
+        A: architecture (MSE) & 2 × 10 & 2227 & 7.23 [6.83, 7.74] & 3.96–18.12 \\
+        A: architecture (MSE) & 2 × 20 & 2227 & 7.37 [7.11, 7.74] & 4.02–17.75 \\
+        A: architecture (MSE) & 3 × 30 & 2227 & 7.52 [7.13, 7.90] & 4.05–18.14 \\
+        A: architecture (MSE) & 1 × 30 & 2227 & 7.52 [7.13, 8.05] & 3.92–18.24 \\
+        A: architecture (MSE) & 3 × 20 & 2227 & 7.63 [7.12, 8.04] & 3.96–18.37 \\
+        A: architecture (MSE) & 2 × 15 & 2227 & 7.85 [7.40, 8.37] & 4.20–19.09 \\
+        A: architecture (MSE) & 3 × 15 & 2227 & 7.92 [7.51, 8.32] & 4.51–18.62 \\
+        A: architecture (MSE) & 1 × 20 & 2227 & 7.98 [7.55, 8.38] & 4.38–18.36 \\
+        A: architecture (MSE) & 1 × 15 & 2227 & 8.23 [7.81, 8.76] & 4.73–19.15 \\
+        A: architecture (MSE) & 3 × 10 & 2227 & 8.30 [7.94, 8.84] & 4.63–18.65 \\
+        A: architecture (MSE) & 1 × 10 & 2227 & 8.63 [8.22, 9.11] & 4.65–18.98 \\
+        B: loss (2 × 15) & geodesic length weighted & 2227 & 5.63 [5.28, 5.90] & 3.08–15.19 \\
+        B: loss (2 × 15) & geodesic & 2227 & 5.83 [5.54, 6.22] & 3.00–15.58 \\
+        B: loss (2 × 15) & mse length weighted & 2227 & 6.16 [5.84, 6.55] & 3.24–16.63 \\
+        B: loss (2 × 15) & mse baseline & 2227 & 7.57 [7.27, 8.10] & 3.83–18.45 \\
+        C: architecture (geodesic, length-weighted) & 3 × 30 & 2227 & 5.21 [4.97, 5.65] & 2.67–14.51 \\
+        C: architecture (geodesic, length-weighted) & 2 × 20 & 2227 & 5.36 [5.08, 5.68] & 2.68–15.04 \\
+        C: architecture (geodesic, length-weighted) & 2 × 15 & 2227 & 5.52 [5.14, 5.87] & 2.65–15.12 \\
+        C: architecture (geodesic, length-weighted) & 2 × 30 & 2227 & 5.57 [5.35, 6.00] & 3.02–14.79 \\
+        C: architecture (geodesic, length-weighted) & 2 × 10 & 2227 & 5.65 [5.31, 6.00] & 2.72–15.61 \\
+        C: architecture (geodesic, length-weighted) & 1 × 30 & 2227 & 7.14 [6.80, 7.54] & 3.56–18.32 \\
+        \bottomrule
+    \end{tabular}
+\end{table}

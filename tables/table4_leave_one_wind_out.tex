@@ -1,0 +1,23 @@
+\begin{table}[h!]
+    \centering
+    \caption{Leave-one-wind-speed-out median per-trajectory angular error (deg). The ANN and the three baselines are trained on two wind speeds and tested on the held-out third.}
+    \label{tab:lowo}
+    \begin{tabular}{@{}lllrrrr@{}}
+        \toprule
+        Held-out wind speed (m/s) & Regime & n (ANN) & ANN [95\% CI] & Linear (thrust+air) & Circular (thrust+air+ground) & Möbius (air) \\
+        \midrule
+        0.3 & Overall & 1265 & 5.52 [5.18, 6.15] & 17.97 & 13.60 & 9.23 \\
+        0.3 & Upwind & 420 & 9.07 [6.60, 13.02] & 68.37 & 22.21 & 21.33 \\
+        0.3 & Crosswind & 782 & 15.98 [13.24, 20.57] & 36.37 & 36.49 & 19.42 \\
+        0.3 & Downwind & 922 & 5.64 [5.23, 6.15] & 6.41 & 7.60 & 7.67 \\
+        0.4 & Overall & 1062 & 5.05 [4.60, 5.57] & 10.14 & 10.37 & 8.70 \\
+        0.4 & Upwind & 251 & 6.17 [4.83, 10.98] & 56.16 & 29.70 & 29.60 \\
+        0.4 & Crosswind & 603 & 16.52 [14.30, 19.63] & 33.54 & 33.97 & 25.43 \\
+        0.4 & Downwind & 863 & 5.28 [4.59, 5.82] & 5.32 & 6.01 & 6.22 \\
+        0.6 & Overall & 999 & 6.93 [6.46, 7.52] & 6.99 & 9.35 & 6.91 \\
+        0.6 & Upwind & 160 & 124.72 [99.93, 137.93] & 103.47 & 106.31 & 110.06 \\
+        0.6 & Crosswind & 511 & 36.29 [32.12, 42.52] & 44.43 & 37.44 & 40.67 \\
+        0.6 & Downwind & 920 & 5.76 [5.30, 6.11] & 5.16 & 6.72 & 5.22 \\
+        \bottomrule
+    \end{tabular}
+\end{table}

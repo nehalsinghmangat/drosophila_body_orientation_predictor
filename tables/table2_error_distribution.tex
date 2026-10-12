@@ -1,0 +1,29 @@
+\begin{table}[h!]
+    \centering
+    \caption{Distribution of per-trajectory median angular error (deg) on the held-out test set for the ANN and all baselines.}
+    \label{tab:error_distribution}
+    \begin{tabular}{@{}lrrrrrr@{}}
+        \toprule
+        Model & n & Median [95\% CI] & Mean & IQR & Q90 & \% > 15° \\
+        \midrule
+        mobius: thrust & 1101 & 19.40 [18.08, 20.84] & 28.14 & 9.58–41.65 & 62.60 & 60.0 \\
+        linear: thrust & 1101 & 18.39 [16.92, 20.46] & 32.51 & 8.32–47.80 & 81.74 & 57.2 \\
+        circular: thrust & 1101 & 18.06 [16.14, 19.66] & 27.50 & 8.11–40.37 & 65.18 & 56.0 \\
+        mobius: ground & 1101 & 17.04 [14.83, 19.09] & 31.61 & 5.91–43.72 & 84.60 & 52.7 \\
+        circular: ground & 1101 & 16.74 [14.75, 19.97] & 35.28 & 5.06–51.89 & 101.46 & 52.7 \\
+        circular: thrust+ground & 1101 & 12.71 [11.43, 13.86] & 22.31 & 5.12–31.98 & 53.19 & 44.7 \\
+        linear: ground & 1101 & 11.22 [9.59, 12.81] & 24.81 & 4.34–33.99 & 62.32 & 43.4 \\
+        linear: air+ground & 1101 & 11.07 [9.46, 12.42] & 23.26 & 4.20–32.68 & 56.87 & 42.5 \\
+        linear: air & 1101 & 10.94 [9.30, 12.34] & 23.15 & 4.41–32.46 & 59.11 & 42.7 \\
+        circular: thrust+air & 1101 & 10.85 [9.89, 11.87] & 22.04 & 5.09–28.64 & 56.55 & 40.2 \\
+        circular: air & 1101 & 10.57 [9.63, 11.62] & 22.79 & 4.64–30.27 & 59.17 & 41.5 \\
+        circular: air+ground & 1101 & 10.56 [9.48, 11.57] & 21.88 & 3.97–28.26 & 53.80 & 40.8 \\
+        circular: thrust+air+ground & 1101 & 10.18 [9.08, 11.09] & 21.00 & 4.45–26.55 & 51.75 & 39.1 \\
+        linear: thrust+ground & 1101 & 9.99 [8.81, 11.39] & 22.75 & 4.06–31.53 & 55.36 & 41.3 \\
+        linear: thrust+air+ground & 1101 & 9.95 [8.75, 11.15] & 22.27 & 4.18–30.88 & 54.94 & 41.2 \\
+        linear: thrust+air & 1101 & 9.91 [8.89, 11.87] & 22.09 & 4.27–30.67 & 55.54 & 41.6 \\
+        mobius: air & 1101 & 8.52 [7.80, 9.17] & 20.60 & 4.78–20.69 & 54.61 & 32.9 \\
+        ANN & 1099 & 5.35 [4.95, 5.74] & 18.00 & 2.71–13.70 & 50.92 & 23.9 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
