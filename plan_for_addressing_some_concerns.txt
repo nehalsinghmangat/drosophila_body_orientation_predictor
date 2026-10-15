@@ -303,7 +303,7 @@ locally-broken run that only retained 718 trajectories):
                                                                            across regimes? — see DOES THE ANN STILL BEAT
                                                                            section below)
 
-Artifacts: pipelinedata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
+Artifacts: externaldata/reviewer_response/*.csv, models/model_reviewer_response_*.keras,
 figures/reviewer_response_*.svg.
 
 ITEMS 1-6 (Essential) — headline numbers, median per-trajectory angular
@@ -415,7 +415,7 @@ DOWNWIND/UPWIND/CROSSWIND — the key finding, now fully resolved:
   ambiguous between two conventions: true body heading vs. direction of
   travel (groundspeed direction). Both were computed, for all 24 models/
   baselines evaluated (see part3 notebook and
-  pipelinedata/reviewer_response/directional_breakdown_by_{heading,travel_direction}.csv).
+  externaldata/reviewer_response/directional_breakdown_by_{heading,travel_direction}.csv).
   Under EITHER convention, for EVERY model tested, downwind is the
   EASIEST regime, not the hardest — directly contradicting the
   manuscript's claim:
@@ -486,7 +486,7 @@ check, notebooks/model_training_based_on_reviewer_feedback_part4_rotation_genera
   thrust-ablated models were trained WITH augmentation and are both
   comparably rotation-robust: std 0.44 vs 0.66 deg) — "thrust costs
   nothing" still stands as a clean, unconfounded simplification result.
-  Full table: pipelinedata/reviewer_response/rotation_generalization_check.csv.
+  Full table: externaldata/reviewer_response/rotation_generalization_check.csv.
 
   FOLLOW-UP, WINDOW-SIZE SWEEP (corrects the paragraph above regarding
   time-delay embedding specifically) — notebooks/model_training_based_on_reviewer_feedback_part5_window_size_sweep.ipynb:
@@ -514,7 +514,7 @@ check, notebooks/model_training_based_on_reviewer_feedback_part4_rotation_genera
   consistent with extra lagged, noisy, redundant features adding more
   noise than signal (the same story already used to explain the
   thrust-ablation result). Full table:
-  pipelinedata/reviewer_response/window_size_sweep.csv.
+  externaldata/reviewer_response/window_size_sweep.csv.
 
   NOTE (window=1 IS "no time-delay embedding", not merely similar to it):
   `collect_offset_rows` at w=1 produces exactly one column per input
@@ -553,7 +553,7 @@ check, notebooks/model_training_based_on_reviewer_feedback_part4_rotation_genera
   necessary - window=1 would be an equally defensible, far simpler
   choice, and this is worth stating plainly rather than implying window=4
   was tuned for a reason the data supports. Full table:
-  pipelinedata/reviewer_response/window_size_multiseed_check.csv.
+  externaldata/reviewer_response/window_size_multiseed_check.csv.
 
 DO THE TWO "HANDLE DYNAMIC MOMENTS" MECHANISMS ACTUALLY HELP DURING DYNAMIC
 MOMENTS? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part7_dynamic_moments.ipynb):
@@ -611,7 +611,7 @@ MOMENTS? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part7_d
   grounds. Convex-opt correction earns a small, real, but partial and
   direction-inconsistent benefit -- real by turning rate, absent-to-reversed by
   thrust magnitude, and insensitive to alpha2 even in dynamic frames. Full
-  tables: pipelinedata/reviewer_response/time_delay_by_dynamism.csv,
+  tables: externaldata/reviewer_response/time_delay_by_dynamism.csv,
   convex_opt_by_dynamism.csv, alpha2_sensitivity_by_dynamism.csv.
 
 VISUAL CHECK: RAW VS. NAIVE VS. NAIVE+CONVEX-OPT, FOR DYNAMIC TRAJECTORIES
@@ -650,7 +650,7 @@ WHERE THE CORRECTIONS ACTUALLY DISAGREE (follow-up, notebooks/model_training_bas
   Part 7's pooled numeric summary. Figures:
   figures/reviewer_response_part8_dynamic_correction_comparison/*.{svg,png} (38 of
   each). Trajectory list with severity metrics:
-  pipelinedata/reviewer_response/dynamic_correction_comparison_trajectories.csv.
+  externaldata/reviewer_response/dynamic_correction_comparison_trajectories.csv.
 
 WHY ARE 30% OF TRAJECTORIES REJECTED — IS CONVEX-OPT RUINING THEM, OR IS THE
 FILTER TOO STRICT? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part9_rejection_cause.ipynb):
@@ -659,8 +659,8 @@ whole response.
 
   data_pipeline.ipynb rejects a trajectory if its residual frame-to-frame jump on
   the NAIVE+CONVEX-OPT corrected heading reaches pi/2 anywhere. 1,001 of 3,339
-  candidates (30%) are rejected this way. Using only pipelinedata/02_augmented
-  and the ALREADY-COMPUTED pipelinedata/03_corrected (no new MOSEK solves
+  candidates (30%) are rejected this way. Using only trainingdata/02_augmented
+  and the ALREADY-COMPUTED trainingdata/03_corrected (no new MOSEK solves
   needed), every candidate's naive-only jump was compared to its already-computed
   naive+convex-opt jump:
 
@@ -713,7 +713,7 @@ whole response.
   revisiting the alpha1/alpha2 balance (or normalizing thrust magnitude
   differently) are the natural next things to try, and could plausibly recover
   most of the 996 unnecessarily-discarded trajectories. Full data:
-  pipelinedata/reviewer_response/rejection_cause_analysis.csv. Figures:
+  externaldata/reviewer_response/rejection_cause_analysis.csv. Figures:
   figures/reviewer_response_part9_*.
 
 DO THE OLS/CIRCULAR-REGRESSION BASELINES ALSO GENERALIZE ACROSS WIND
@@ -753,7 +753,7 @@ DIRECTIONS, OR ONLY THE ANN? (follow-up, notebooks/model_training_based_on_revie
   (`thrust+ground`, linear) was the WORST of all three conditions once
   evaluated under rotation. Any baseline reported in the manuscript needs to be
   checked under rotation before being called "the best simple alternative."
-  Full data: pipelinedata/reviewer_response/ols_rotation_generalization.csv.
+  Full data: externaldata/reviewer_response/ols_rotation_generalization.csv.
 
 DOES THE ANN STILL BEAT THE BEST AUGMENTED-FIT LINEAR MODEL, BY FLIGHT-
 DIRECTION REGIME? (follow-up, notebooks/model_training_based_on_reviewer_feedback_part11_ann_vs_ols_by_regime.ipynb):
@@ -784,7 +784,7 @@ DIRECTION REGIME? (follow-up, notebooks/model_training_based_on_reviewer_feedbac
   kinematics alone are least informative, which is a coherent, defensible reason
   to use a neural network even though the pooled accuracy number alone does not
   show it. Full data:
-  pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv.
+  externaldata/reviewer_response/ann_vs_augmented_ols_by_regime.csv.
 
 WHY DON'T THE POOLED SUMMARY STATISTICS SHOW THE REGIME-SPECIFIC SUPERIORITY?
 (follow-up, notebooks/model_training_based_on_reviewer_feedback_part12_why_pooled_stats_hide_regime_effect.ipynb):
@@ -830,7 +830,7 @@ WHY DON'T THE POOLED SUMMARY STATISTICS SHOW THE REGIME-SPECIFIC SUPERIORITY?
   pooled number, is the correct evidence for the "the ANN is worth using
   because it wins where kinematics alone are least informative" claim in the
   response letter. Full data: reuses
-  pipelinedata/reviewer_response/ann_vs_augmented_ols_by_regime.csv (no new
+  externaldata/reviewer_response/ann_vs_augmented_ols_by_regime.csv (no new
   data generated - this is a re-aggregation of Part 11's per-frame output).
 
 IS `groundspeed_angle` THE RIGHT REFERENCE FOR NAIVE HEADING CORRECTION?
@@ -881,7 +881,7 @@ IS `groundspeed_angle` THE RIGHT REFERENCE FOR NAIVE HEADING CORRECTION?
   the "no convex-opt" decision the user was already leaning toward - not just "convex-opt
   net-hurts retention" (Part 9) but "a one-line reference-variable change to the free
   naive correction gets you convex-opt's real benefit without its cost." Full data:
-  pipelinedata/reviewer_response/naive_reference_variant_comparison.csv.
+  externaldata/reviewer_response/naive_reference_variant_comparison.csv.
 
   CORRECTION (see Part 14 below): actually re-running the pipeline and retraining showed
   the "at no cost" framing above was premature - the recovered trajectories ARE real and
@@ -936,8 +936,8 @@ RE-RUNNING THE FULL PIPELINE WITH naive(thrust)-ONLY CORRECTION, NO CONVEX-OPT
   repertoire, or (b) exclude them and explicitly note near-hover/low-thrust segments as
   a known scope limitation, rather than silently dropping them via an unprincipled
   rejection filter as the current pipeline does. Full data:
-  pipelinedata/reviewer_response/06_final_thrust_naive_only.csv,
-  pipelinedata/reviewer_response/ann_thrust_naive_only_by_regime.csv.
+  externaldata/reviewer_response/06_final_thrust_naive_only.csv,
+  externaldata/reviewer_response/ann_thrust_naive_only_by_regime.csv.
 
 A PRINCIPLED FILTERING CRITERION TO REPLACE CONVEX-OPT'S REJECTION
 (follow-up, notebooks/model_training_based_on_reviewer_feedback_part15_principled_filtering_criterion.ipynb):
@@ -972,7 +972,7 @@ A PRINCIPLED FILTERING CRITERION TO REPLACE CONVEX-OPT'S REJECTION
   MORE than the current 2338 - retrained accuracy 6.58 deg [5.98, 7.13]: better than
   including everything (8.55 deg), not as good as the tightest/current-size option (5.20-5.55
   deg). The threshold-vs-size-vs-accuracy trade-off is continuous and reported explicitly
-  (pipelinedata/reviewer_response/thrust_threshold_tradeoff.csv), letting the paper choose a
+  (externaldata/reviewer_response/thrust_threshold_tradeoff.csv), letting the paper choose a
   disclosed, defensible operating point instead of convex-opt's silent, artifact-driven one.
 
 THE THRUST-ABLATION CONTROL, REVISITED (correction to Part 15; follow-up,

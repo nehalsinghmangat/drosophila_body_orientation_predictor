@@ -757,119 +757,46 @@ def smooth_trajectory(trajectory: pd.DataFrame, savgol_params: list = None) -> p
 
 
 # ============================================================
-# Time-Delay Embedding
+# Wind Augmentation
 # ============================================================
 
-def collect_offset_rows(
-    df: pd.DataFrame,
-    aug_column_names=None,
-    keep_column_names=None,
-    w: int = 1,
-    direction: str = 'backward',
+def augment_trajectories(
+    fly_traj_list: list,
+    input_names: list,
+    output_names: list,
+    wind_augment: bool = False,
+    wrap_angles: bool = False,
 ) -> pd.DataFrame:
     """
-    Create a time-delay embedding by stacking offset rows as new columns.
+    Build model inputs and targets from a list of trajectory DataFrames,
+    optionally rotating each trajectory to a random wind direction.
 
-    For each column in aug_column_names, creates w new columns named
-    '<col>_0', '<col>_1', ..., '<col>_{w-1}' using a sliding window.
-    The result has (n - w + 1) rows.
+    Returns the input columns followed by the output columns, concatenated
+    across trajectories and rounded to 4 decimal places.
 
     Parameters
     ----------
-    df : pd.DataFrame
-    aug_column_names : list of str, optional
-        Columns to augment. Defaults to all columns.
-    keep_column_names : list of str, optional
-        Columns to include unchanged (not augmented).
-    w : int
-        Window size.
-    direction : str
-        'backward' for lookback window, 'forward' for lookahead.
-
-    Returns
-    -------
-    pd.DataFrame
-        Augmented DataFrame with (n - w + 1) rows.
-    """
-    df = df.reset_index(drop=True)
-    if aug_column_names is None:
-        aug_column_names = df.columns
-
-    new_column_names = {a: [f"{a}_{k}" for k in range(w)] for a in aug_column_names}
-    n_row = df.shape[0]
-    n_row_train = n_row - w + 1
-    df_aug_dict = {}
-
-    for a in aug_column_names:
-        data = np.asmatrix(df.loc[:, [a]])
-        mat = np.nan * np.ones((n_row_train, w))
-        for i in range(w):
-            if direction == 'backward':
-                startI, endI = w - 1 - i, n_row - i
-            elif direction == 'forward':
-                startI, endI = i, n_row - w + 1 + i
-            else:
-                raise ValueError("direction must be 'forward' or 'backward'")
-            mat[:, i] = np.squeeze(data[startI:endI, :])
-        df_aug_dict[a] = pd.DataFrame(mat, columns=new_column_names[a])
-
-    df_aug = pd.concat(list(df_aug_dict.values()), axis=1)
-
-    if keep_column_names is not None:
-        for c in keep_column_names:
-            if direction == 'backward':
-                startI, endI = w - 1, n_row
-            elif direction == 'forward':
-                startI, endI = 0, n_row - w
-            else:
-                raise ValueError("direction must be 'forward' or 'backward'")
-            keep = df.loc[startI:endI, [c]].reset_index(drop=True)
-            df_aug = pd.concat([df_aug, keep], axis=1)
-
-    return df_aug
-
-
-def augment_with_time_delay_embedding(fly_traj_list: list, wind_augment: bool = False, wrap_angles: bool = False, **kwargs) -> pd.DataFrame:
-    """
-    Apply time-delay embedding to a list of trajectory DataFrames.
-
-    Calls collect_offset_rows on each trajectory and concatenates the results.
-
-    Expected kwargs
-    ---------------
-    time_window : int
-        Number of timesteps in the window.
+    fly_traj_list : list of pd.DataFrame
+        One DataFrame per trajectory.
     input_names : list of str
-        Columns to use as model inputs (will be augmented).
+        Columns to use as model inputs.
     output_names : list of str
-        Columns to keep as model outputs (not augmented).
-    direction : str
-        'backward' or 'forward'.
-
-    Parameters
-    ----------
+        Columns to keep as model outputs.
     wind_augment : bool, optional
-        If True, apply random wind-direction rotation to each trajectory's
-        angle columns (heading_angle, groundspeed_angle, airspeed_angle,
-        thrust_angle) before embedding. This simulates multiple wind
-        directions and is used to train model_CEM_all-angle-rotate.keras.
-        Default is False.
+        If True, add a random rotation (one per trajectory, fixed seed) to
+        each trajectory's angle columns (heading_angle, groundspeed_angle,
+        airspeed_angle, thrust_angle) and recompute heading_angle_x/_y. This
+        simulates multiple wind directions. Default is False.
     wrap_angles : bool, optional
-        If True, wrap all rotated angle columns back to [-pi, pi] after
-        adding the rotation. Only applies when wind_augment=True. Without
-        wrapping, rotated angles can range up to 3*pi, which is
-        out-of-distribution relative to inference-time inputs. Default is False.
+        If True, wrap the rotated angle columns back to [-pi, pi]. Only
+        applies when wind_augment=True. Without wrapping, rotated angles can
+        range up to 3*pi, which is out-of-distribution relative to
+        inference-time inputs. Default is False.
 
     Returns
     -------
     pd.DataFrame
-        Concatenated augmented DataFrame rounded to 4 decimal places.
     """
-    time_window = kwargs["time_window"]
-    input_names = kwargs["input_names"]
-    output_names = kwargs["output_names"]
-    direction = kwargs["direction"]
-
     angle_cols = ['heading_angle', 'groundspeed_angle', 'airspeed_angle', 'thrust_angle']
 
     rotations = []
@@ -888,13 +815,7 @@ def augment_with_time_delay_embedding(fly_traj_list: list, wind_augment: bool = 
             traj['heading_angle_x'] = np.cos(traj['heading_angle'])
             traj['heading_angle_y'] = np.sin(traj['heading_angle'])
 
-        traj_augment_list.append(
-            collect_offset_rows(traj,
-                                aug_column_names=input_names,
-                                keep_column_names=output_names,
-                                w=time_window,
-                                direction=direction)
-        )
+        traj_augment_list.append(traj[list(input_names) + list(output_names)].reset_index(drop=True))
 
     return np.round(pd.concat(traj_augment_list, ignore_index=True), 4)
 
@@ -903,8 +824,7 @@ def sliding_window(df, slide=None, w=None, n_window_limit=None, seed=None, aug_c
     """
     Extract windowed samples from a DataFrame at fixed or random start points.
 
-    Unlike collect_offset_rows (one row per timestep), sliding_window produces
-    one row per window.
+    Produces one row per window.
 
     Parameters
     ----------
@@ -1274,7 +1194,7 @@ def plot_trajectory_with_predicted_heading(
     ----------
     trajectory : pd.DataFrame
         Must have position_x, position_y, heading_angle, timestamp, and the
-        input columns expected by augment_with_time_delay_embedding.
+        input columns expected by augment_trajectories.
     axis : matplotlib.axes.Axes
     n_input : int
         Number of input features (used to slice the augmented DataFrame columns).
@@ -1291,11 +1211,10 @@ def plot_trajectory_with_predicted_heading(
     smooth : bool
         If True, apply Gaussian smoothing (sigma=2) to predicted heading components.
     **kwargs : dict
-        Passed to augment_with_time_delay_embedding (time_window, input_names,
-        output_names, direction).
+        Passed to augment_trajectories (input_names, output_names).
     """
     def _predict_heading(df):
-        aug = augment_with_time_delay_embedding([df], **kwargs).iloc[:, 0:n_input]
+        aug = augment_trajectories([df], **kwargs).iloc[:, 0:n_input]
         components = best_estimator.predict(aug)
         if smooth:
             components = gaussian_filter1d(best_estimator.predict(aug), sigma=2, axis=0)
