@@ -13,8 +13,6 @@ pip install -r requirements.txt
 jupyter lab
 ```
 
-The heading correction used by the notebooks (`naive_heading_correction_v2`) does not require MOSEK. The older `convex_opt_heading_correction` in `utils/utils.py` is no longer used by the notebooks; running it needs a valid MOSEK license at `~/mosek/mosek.lic`.
-
 ## Data
 
 Experimental data must be downloaded separately from Dryad:
@@ -43,8 +41,8 @@ This project predicts *Drosophila* body heading angles from flight trajectory da
 All notebooks add `../utils` to `sys.path` so `from utils import ...` resolves correctly.
 
 - **`utils/utils.py`** — All shared functions. Two parallel APIs for the same computations:
-  - **Top-level functions** (used by the notebooks): `naive_heading_correction_v2`, `augment_fly_trajectory`, `smooth_trajectory`, `augment_trajectories`, `plot_trajectory`, `plot_trajectory_with_predicted_heading`, `create_model`, `custom_density_plots`.
-  - **`compute` class** (static methods): `compute.angular_velocity`, `compute.linear_acceleration`, `compute.thrust`, `compute.heading_angle_corrected`, `compute.heading_angle_convex_opt` (legacy, unused by the notebooks) — lower-level, return arrays rather than augmented DataFrames.
+  - **Top-level functions** (used by the notebooks): `heading_correction`, `augment_fly_trajectory`, `smooth_trajectory`, `augment_trajectories`, `plot_trajectory`, `plot_trajectory_with_predicted_heading`, `create_model`, `custom_density_plots`.
+  - **`compute` class** (static methods): `compute.angular_velocity`, `compute.linear_acceleration`, `compute.thrust` — lower-level, return arrays rather than augmented DataFrames.
 - **`utils/fly_plot_lib_plot.py`** — Wrapper around `FlyPlotLib` for trajectory visualisation with heading arrows.
 
 ### Pipeline data stages (`trainingdata/`)
@@ -55,7 +53,7 @@ Stages 01–04 are written by `01_data_correction_and_processing.ipynb`; the res
 |---|---|
 | `01_merged/` | Per-wind-speed CSVs + combined `all_wind_heading_and_trajectories.csv` |
 | `02_augmented/` | Kinematic features added (groundspeed, airspeed, thrust, acceleration); heading still only accurate modulo π |
-| `03_corrected/` | 180° heading ambiguities resolved (`naive_heading_correction_v2`); `heading_correction_steps_svg/` holds per-trajectory plots for manual review |
+| `03_corrected/` | 180° heading ambiguities resolved (`heading_correction`); `heading_correction_steps_svg/` holds per-trajectory plots for manual review |
 | `04_filtered/` | Short/uncorrectable trajectories removed; `rejected_trajectories.csv` |
 | `04_trainingdata/` | Training-ready data (`heading_angle_x`/`heading_angle_y` added) |
 
@@ -74,7 +72,7 @@ Older reviewer-response outputs (`reviewer_response/`) live in `externaldata/`, 
 1. **Raw data**: Parquet files for trajectory, body orientation, and key table per wind speed.
 2. **Merging**: Join trajectory + body orientation via key table; concatenate across wind speeds.
 3. **Augmentation**: Compute groundspeed, airspeed, thrust (mass=0.25e-6 kg, dragcoeff=mass/0.170), linear acceleration, heading components (cos/sin). Differentiation uses `pynumdiff` Savitzky-Golay with params `[2, 10, 10]`.
-4. **Heading correction**: Fix 180° ambiguities with `naive_heading_correction_v2`: align the initial heading to the thrust direction (thrust-magnitude-weighted circular mean), remove π-flips frame by frame with `np.unwrap` (period π), linearly interpolate isolated single-frame outliers, then align the whole trajectory to thrust once more. This replaced the earlier naive + convex-optimisation (cvxpy + MOSEK) two-step correction.
+4. **Heading correction**: Fix 180° ambiguities with `heading_correction`: align the initial heading to the thrust direction (thrust-magnitude-weighted circular mean), remove π-flips frame by frame with `np.unwrap` (period π), linearly interpolate isolated single-frame outliers, then align the whole trajectory to thrust once more.
 5. **Filtering**: Remove trajectories with residual π-flips above threshold.
 6. **Smoothing**: Unwrap heading signal then apply Savitzky–Golay filter (default params `[1, 5, 5]`).
 7. **Wind augmentation**: `augment_trajectories` selects the model inputs (groundspeed, groundspeed_angle, airspeed, airspeed_angle → 4 features) and targets from each trajectory and, for the training copy, rotates all angle columns by a random per-trajectory wind direction (no time-delay embedding).

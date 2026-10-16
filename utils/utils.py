@@ -4,7 +4,7 @@ utils.py — Drosophila Body Orientation Predictor Utilities
 Consolidated utility module for the full prediction pipeline:
   - Data loading and merging (HDF5 → CSV)
   - Feature augmentation (groundspeed, airspeed, thrust, etc.)
-  - Heading correction (naive unwrap and convex-optimization variants)
+  - Heading correction (np.unwrap-based)
   - Trajectory filtering and smoothing
   - Time-delay embedding for the neural network
   - Model creation
@@ -18,7 +18,6 @@ Consolidated utility module for the full prediction pipeline:
 import copy
 import datetime
 
-import cvxpy
 import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -356,73 +355,6 @@ class compute:
         return thrust_x, thrust_y
 
     @staticmethod
-    def heading_angle_corrected(
-        fly_trajectory_and_body: pd.DataFrame,
-        name_of_heading_field: str,
-        name_of_airspeed_field: str,
-    ):
-        """
-        Correct 180° heading ambiguities using np.unwrap (no MOSEK required).
-
-        Aligns heading with the reference direction, unwraps π-flips, then
-        wraps to [-π, π].
-
-        Parameters
-        ----------
-        name_of_heading_field : str
-            Column name for the heading angle (radians).
-        name_of_airspeed_field : str
-            Column name for the reference direction (e.g., 'groundspeed_angle').
-
-        Returns
-        -------
-        np.ndarray
-            Corrected heading angles.
-        """
-        traj = fly_trajectory_and_body.copy()
-        angle = traj[name_of_heading_field]
-        reference = traj[name_of_airspeed_field]
-        initial_window = 5
-        circ_diff_start = circular_distance(
-            scipy.stats.circmean(reference[0:initial_window], low=-np.pi, high=np.pi),
-            scipy.stats.circmean(angle[0:initial_window], low=-np.pi, high=np.pi),
-        )
-        if circ_diff_start > 0.5 * np.pi:
-            angle = angle + np.pi * np.sign(circ_diff_start)
-        corrected = np.unwrap(angle, period=np.pi, discont=0.5 * np.pi)
-        phi_mean = scipy.stats.circmean(wrapToPi(corrected), low=-np.pi, high=np.pi)
-        psi_mean = scipy.stats.circmean(wrapToPi(reference), low=-np.pi, high=np.pi)
-        if circular_distance(phi_mean, psi_mean) > 0.5 * np.pi:
-            corrected = corrected + np.pi * np.sign(circular_distance(phi_mean, psi_mean))
-        return wrapToPi(corrected)
-
-    @staticmethod
-    def heading_angle_convex_opt(fly_trajectory_and_body: pd.DataFrame):
-        """
-        Correct 180° heading ambiguities via convex optimization (requires MOSEK).
-
-        Minimizes total variation of the corrected heading plus deviation from
-        the thrust direction.
-
-        Returns
-        -------
-        np.ndarray
-            Corrected heading angles wrapped to [-π, π].
-        """
-        def _angle_diff(alpha, beta):
-            return (alpha - beta + np.pi) % (2 * np.pi) - np.pi
-
-        k = cvxpy.Variable(len(fly_trajectory_and_body), integer=True)
-        heading_angle = fly_trajectory_and_body.heading_angle.values
-        thrust_x, thrust_y = compute.thrust(fly_trajectory_and_body)
-        thrust_angle = np.arctan2(thrust_y, thrust_x)
-        avg_diff = np.average(_angle_diff(heading_angle, thrust_angle))
-        L = cvxpy.tv(heading_angle + np.pi * k) + cvxpy.norm1(avg_diff + np.pi * k)
-        cvxpy.Problem(cvxpy.Minimize(L), [-1 <= k, k <= 1]).solve(solver='MOSEK')
-        return np.arctan2(np.sin(heading_angle + k.value * np.pi),
-                          np.cos(heading_angle + k.value * np.pi))
-
-    @staticmethod
     def heading_angle_from_ellipse(angle):
         """
         Derive heading angle from the short-axis ellipse angle (adds ±π/2).
@@ -444,48 +376,6 @@ class compute:
 # ============================================================
 # Heading Correction
 # ============================================================
-
-def naive_heading_correction(fly_trajectory_and_body: pd.DataFrame) -> pd.DataFrame:
-    """
-    Correct 180° heading ambiguities in-place using np.unwrap (no MOSEK required).
-
-    Algorithm:
-      1. Align the initial heading with the groundspeed direction.
-      2. Use np.unwrap with period=π to detect and remove π-flips.
-      3. Align mean corrected heading with mean groundspeed direction.
-      4. Wrap result to [-π, π].
-
-    Parameters
-    ----------
-    fly_trajectory_and_body : pd.DataFrame
-        Must have 'heading_angle' and 'groundspeed_angle' columns.
-
-    Returns
-    -------
-    pd.DataFrame
-        Input DataFrame with 'heading_angle' corrected (mutated in place).
-    """
-    angle = fly_trajectory_and_body["heading_angle"].copy()
-    course = fly_trajectory_and_body["groundspeed_angle"]
-    initial_window = 5
-
-    circ_diff_start = circular_distance(
-        scipy.stats.circmean(course[0:initial_window], low=-np.pi, high=np.pi),
-        scipy.stats.circmean(angle[0:initial_window], low=-np.pi, high=np.pi),
-    )
-    if circ_diff_start > 0.5 * np.pi:
-        angle = angle + np.pi * np.sign(circ_diff_start)
-
-    corrected = np.unwrap(angle, period=np.pi, discont=0.5 * np.pi)
-    phi_mean = scipy.stats.circmean(wrapToPi(corrected), low=-np.pi, high=np.pi)
-    psi_mean = scipy.stats.circmean(wrapToPi(course), low=-np.pi, high=np.pi)
-    circ_diff = circular_distance(phi_mean, psi_mean)
-    if circ_diff > 0.5 * np.pi:
-        corrected = corrected + np.pi * np.sign(circ_diff)
-
-    fly_trajectory_and_body["heading_angle"] = wrapToPi(corrected)
-    return fly_trajectory_and_body
-
 
 def _weighted_circmean(angles: np.ndarray, weights: np.ndarray) -> float:
     """Circular mean of angles weighted by (non-negative) weights."""
@@ -531,35 +421,27 @@ def _spike_detect_and_interp(corrected: np.ndarray, dev_thresh_rad: float, gap_t
     return fixed, is_outlier
 
 
-def naive_heading_correction_v2(
+def heading_correction(
     fly_trajectory_and_body: pd.DataFrame,
     dev_thresh_deg: float = 40.0,
     gap_thresh_deg: float = 30.0,
 ) -> pd.DataFrame:
     """
     Correct 180° heading ambiguities using a thrust-referenced, weighted, outlier-robust
-    variant of naive_heading_correction (no MOSEK/convex-opt required).
+    unwrapping.
 
-    Differs from naive_heading_correction in three ways:
-      1. Reference signal is thrust_angle, not groundspeed_angle — thrust_angle stays
-         well-defined at near-zero groundspeed (e.g. hovering), where groundspeed_angle
-         becomes numerically unstable (the angle of a near-zero-magnitude vector).
-      2. Both global branch decisions (initial-window alignment and final whole-
-         trajectory alignment) use a thrust-magnitude-WEIGHTED circular mean rather than
-         an unweighted one, so low-thrust (noisier) frames contribute less to the
-         decision than high-thrust (more reliable) ones.
-      3. A single-frame outlier in the locally-unwrapped signal is detected and
-         interpolated (see _spike_detect_and_interp) rather than left uncorrected.
+    Steps:
+      1. The initial heading is aligned to the thrust direction (thrust_angle stays
+         well-defined at near-zero groundspeed, e.g. hovering, where groundspeed_angle
+         becomes numerically unstable).
+      2. π-flips are removed frame by frame with np.unwrap (period π).
+      3. Isolated single-frame outliers in the unwrapped signal are detected and
+         linearly interpolated (see _spike_detect_and_interp).
+      4. The whole trajectory is aligned to the thrust direction once more.
 
-    Validated in the reviewer-response analysis (see notebooks/
-    model_training_based_on_reviewer_feedback_part17_improved_correction.ipynb):
-    the outlier-interpolation step is a safe, well-motivated fix with no measurable
-    accuracy cost. The thrust-weighting step alone was found to be a net-negative
-    change in isolation (it behaves more like a different, comparably noisy heuristic
-    on ambiguous low-thrust trajectories than a reliable improvement); combined with
-    the outlier fix it gave a small, statistically significant net improvement, but
-    that combined result should be treated as provisional pending further validation
-    (e.g. across multiple random seeds) rather than a settled result.
+    Both global branch decisions (steps 1 and 4) use a thrust-magnitude-weighted circular
+    mean, so low-thrust (noisier) frames contribute less to the decision than
+    high-thrust (more reliable) ones.
 
     Parameters
     ----------
@@ -604,46 +486,6 @@ def naive_heading_correction_v2(
         corrected = corrected + np.pi * np.sign(circ_diff)
 
     fly_trajectory_and_body["heading_angle"] = wrapToPi(corrected)
-    return fly_trajectory_and_body
-
-
-def convex_opt_heading_correction(fly_trajectory_and_body: pd.DataFrame) -> pd.DataFrame:
-    """
-    Correct 180° heading ambiguities via convex optimization (requires MOSEK).
-
-    Minimizes total variation of the corrected heading (smoothness term, weight=1)
-    plus thrust-magnitude-weighted alignment to the thrust direction (weight=5).
-    The heading is unwrapped before optimization so the TV term correctly measures
-    angular change across the ±π boundary.
-
-    Parameters
-    ----------
-    fly_trajectory_and_body : pd.DataFrame
-        Must have 'heading_angle', 'thrust_angle', and 'thrust' columns.
-
-    Returns
-    -------
-    pd.DataFrame
-        Input DataFrame with 'heading_angle' corrected (mutated in place).
-    """
-    def _angle_diff(alpha, beta):
-        return (alpha - beta + np.pi) % (2 * np.pi) - np.pi
-
-    k = cvxpy.Variable(len(fly_trajectory_and_body), integer=True)
-    heading_angle = fly_trajectory_and_body.heading_angle.values
-    heading_angle_unwrapped = np.unwrap(heading_angle)
-    thrust_angle = fly_trajectory_and_body.thrust_angle.values
-    thrust_mag = fly_trajectory_and_body.thrust.values
-    thrust_mag_norm = thrust_mag / thrust_mag.mean()
-    delta = _angle_diff(heading_angle, thrust_angle)
-
-    L = 1 * cvxpy.tv(heading_angle_unwrapped + np.pi * k) + 5 * cvxpy.norm1(cvxpy.multiply(thrust_mag_norm, delta + np.pi * k))
-    cvxpy.Problem(cvxpy.Minimize(L), [-1 <= k, k <= 1]).solve(solver='MOSEK')
-
-    fly_trajectory_and_body["heading_angle"] = np.arctan2(
-        np.sin(heading_angle_unwrapped + k.value * np.pi),
-        np.cos(heading_angle_unwrapped + k.value * np.pi),
-    )
     return fly_trajectory_and_body
 
 

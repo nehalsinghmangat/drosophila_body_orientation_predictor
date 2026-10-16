@@ -9,20 +9,12 @@ pyarrow==24.0.0
 # Deep learning
 keras>=3.3.3
 tensorflow>=2.16.2
-scikeras==0.13.0
-
-# Convex optimization (heading correction)
-cvxpy==1.5.2
-Mosek==10.2.1
 
 # Numerical differentiation
 pynumdiff==0.2.2
 
 # Symbolic math (used in fly_plot_lib_plot.py)
 sympy==1.13.1
-
-# Statistics (OLS/circular-regression baselines, reviewer-response notebooks)
-statsmodels==0.15.0
 
 # Jupyter
 jupyterlab==4.2.4
