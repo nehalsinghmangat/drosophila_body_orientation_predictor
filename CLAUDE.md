@@ -44,6 +44,19 @@ This project predicts *Drosophila* body heading angles from flight trajectory da
 
 Run order is 01 → 02 → 03 → 04. The notebooks are saved with their outputs and figures embedded.
 
+### Inference example (`example_inference/`)
+
+- **`heading_inference.py`** — marimo notebook (`marimo edit example_inference/heading_inference.py`; `marimo check` lints it). It applies the models to a trajectory CSV from `trajectories/` (columns `x, y, z, xvel, yvel, zvel, time, frame`, plus an optional `<name>.json` with `wind_speed` and `wind_direction_deg`, the direction the air blows toward, counter-clockwise from +x).
+  - It computes the 4 inputs itself (`compute_ann_inputs`) rather than calling `augment_fly_trajectory`. It rotates into the model frame by subtracting the wind direction from both angles, and adds it back to the predicted heading.
+  - "ensemble" is the circular mean of the 5 seed models.
+  - It calls the models directly (`model(X, training=False)`): `model.predict` deadlocks inside marimo.
+  - Each step is gated by a `mo.ui.run_button`. To run it headlessly, override the buttons, e.g. `app.run(defs={'inputs_button': SimpleNamespace(value=True), ...})`. A cell that defines a button also defines the dropdowns beside it, so override those too.
+  - "Export SVG" writes to `example_inference/figures/`.
+- **`extract_splitflow_trajectory.py`** — wrote the example CSVs from the SplitFlowOptoTracking laminar data set (0.4 m/s wind toward −x). It lists them in `TRAJECTORIES` (output name → `obj_id_unique_event`):
+  - the Figure 5B laminar trajectory (`20220927_170437_3415_122`), which drifts slightly downwind after the flash;
+  - five `splitflow_laminar_casting_*` trajectories, picked to cast crosswind while progressing upwind. It needs PyTables, which is not in `requirements.txt`. Run it with `python -I`, because the repo's `tables/` directory shadows the `tables` package.
+- The trajectory CSVs match the `*.csv` ignore rule, so they must be added with `git add -f`.
+
 ### Python modules (in `utils/`)
 
 All notebooks add `../utils` to `sys.path` so `from utils import ...` resolves correctly.

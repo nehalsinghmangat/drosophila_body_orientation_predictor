@@ -87,4 +87,14 @@ jupyter lab
 Run the notebooks in this order. **`notebooks/01_data_correction_and_processing.ipynb`** turns the raw data into the training-ready dataset (`trainingdata/04_trainingdata/`); **`notebooks/02_training_and_testing_the_ann.ipynb`** then trains and evaluates the model, **`notebooks/03_ann_vs_linear_models.ipynb`** compares it with the baselines, and **`notebooks/04_generate_tables.ipynb`** writes the paper tables.
 
 
+## Example: predicting heading for a new trajectory
+
+`example_inference/heading_inference.py` is an interactive [marimo](https://marimo.io) notebook that applies the trained models to a trajectory with no heading information. You pick a trajectory and set the wind, compute the ANN inputs, choose a model (or the 5-seed ensemble), and plot the predicted headings as wedges, with SVG export. It needs only the files in this repo, not the Dryad data:
+
+```bash
+marimo edit example_inference/heading_inference.py
+```
+
+Trajectories are CSV files in `example_inference/trajectories/` with columns `x, y, z, xvel, yvel, zvel, time, frame` (m, m/s, s). An optional `<name>.json` next to a CSV sets the default wind (`wind_speed` in m/s, `wind_direction_deg`: the direction the air blows toward, counter-clockwise from +x). The included examples are laminar-flow (0.4 m/s) trajectories from the SplitFlowOptoTracking data set, extracted by `example_inference/extract_splitflow_trajectory.py`: the one in Figure 5B of that manuscript, and five (`splitflow_laminar_casting_*`) that cast crosswind while progressing upwind after the opto flash.
+
 If you have any questions regarding the data pipeline, please shoot me an email at nehalsinghmangat.software@gmail.com. If you encounter any issues with running the pipeline or reproducing results, please submit a Github issue.   

@@ -1,0 +1,6 @@
+{
+  "wind_speed": 0.4,
+  "wind_direction_deg": 180.0,
+  "source": "flies_laminar_c1xwt_preprocessed_optotrigger_trimmed.hdf, obj_id_unique_event 20220926_173927_4146_106 (casting: 4 casts, 17 cm upwind while casting; flash intensity 50)",
+  "units": "x, y, z: m; xvel, yvel, zvel: m/s; time: s relative to the opto flash"
+}
