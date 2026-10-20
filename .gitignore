@@ -25,6 +25,7 @@ paper/*.fdb_latexmk
 .vscode/
 .DS_Store
 .envrc
+.#*
 
 *.csv
 *.svg
