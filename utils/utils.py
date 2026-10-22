@@ -16,7 +16,6 @@ Consolidated utility module for the full prediction pipeline:
 # Imports
 # ============================================================
 import copy
-import datetime
 
 import matplotlib
 import matplotlib.colors as mcolors
@@ -25,6 +24,7 @@ import numpy as np
 import pandas as pd
 import pynumdiff as pynd
 import scipy
+import scipy.special
 import scipy.stats
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.ndimage import gaussian_filter1d
@@ -171,62 +171,67 @@ def remove_irrelevant_body_data(body_df: pd.DataFrame) -> pd.DataFrame:
     return trimmed.rename(columns={'angle': 'ellipse_short_angle'})
 
 
-def sync_time(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Round timestamps to two decimal places (SS.ss) for DataFrame merging.
-
-    Converts raw UNIX timestamps to within-second values so trajectory and
-    body DataFrames can be merged on 'timestamp'.
-    """
-    df_synced = df.copy()
-    df_synced['timestamp'] = df['timestamp'].apply(
-        lambda x: int(datetime.datetime.utcfromtimestamp(x).strftime('%S')) +
-                  float(datetime.datetime.utcfromtimestamp(x).strftime('%f')[0:2]) / 100
-    )
-    return df_synced
-
-
 def join_all_body_and_trajec_df(
-    synced_body: pd.DataFrame,
-    synced_trajectory: pd.DataFrame,
+    body_df: pd.DataFrame,
+    trajec_df: pd.DataFrame,
     key_table: pd.DataFrame,
+    tolerance: float = 0.005,
 ) -> list:
     """
     Merge body-orientation and trajectory DataFrames for every unique trajectory ID.
 
-    Uses key_table to match each trajec_objid to its body_objid, then
-    inner-joins on 'timestamp'.
+    Uses key_table to match each trajec_objid to its body_objid, then pairs each trajectory frame
+    with the body frame nearest to it in time (raw UNIX timestamps, s), if one is within
+    `tolerance` (default half a frame). The two cameras run at slightly different rates (trajectory
+    ~99.5 Hz, body 100 Hz), so a body frame occasionally lies near two trajectory frames; it is then
+    kept only for the nearer one. Trajectory frames without a body frame are dropped.
 
     Returns
     -------
     list of pd.DataFrame
-        One merged DataFrame per unique trajectory.
+        One merged DataFrame per unique trajectory, sorted by time, with the trajectory's timestamps.
     """
     def _join_one(trajec_id):
-        fly_trajectory = synced_trajectory[synced_trajectory['trajec_objid'] == trajec_id]
+        fly_trajectory = trajec_df[trajec_df['trajec_objid'] == trajec_id].sort_values('timestamp')
         body_id = key_table[key_table['trajec_objid'] == trajec_id]['body_objid'].values[0]
-        fly_body = synced_body[synced_body['body_objid'] == body_id]
-        return pd.merge(fly_trajectory, fly_body, on='timestamp', how='inner').drop(['body_objid'], axis=1)
+        fly_body = (body_df[body_df['body_objid'] == body_id].sort_values('timestamp')
+                    .rename(columns={'timestamp': 'body_timestamp'}))
+        merged = pd.merge_asof(fly_trajectory, fly_body, left_on='timestamp', right_on='body_timestamp',
+                               direction='nearest', tolerance=tolerance).dropna(subset=['body_timestamp'])
+        offset = (merged['timestamp'] - merged['body_timestamp']).abs()
+        merged = merged.loc[offset.sort_values(kind='stable').index].drop_duplicates('body_timestamp')
+        return merged.sort_values('timestamp').drop(columns=['body_objid', 'body_timestamp']).reset_index(drop=True)
 
-    return [_join_one(tid) for tid in synced_trajectory['trajec_objid'].unique()]
+    return [_join_one(tid) for tid in trajec_df['trajec_objid'].unique()]
 
 
 def transform_timestamps_to_start_at_zero(fly_trajectory_and_body: pd.DataFrame) -> pd.DataFrame:
     """
-    Shift timestamps so the trajectory starts at t=0, rounded to 2 decimal places.
+    Shift timestamps so the trajectory starts at t=0, rounded to 4 decimal places (0.1 ms, finer than the
+    ~10.05 ms frame interval, so the frame spacing is kept).
 
     Mutates the input DataFrame in place and also returns it.
     """
     fly_trajectory_and_body["timestamp"] = (
         fly_trajectory_and_body["timestamp"] - fly_trajectory_and_body["timestamp"][0]
     )
-    fly_trajectory_and_body["timestamp"] = fly_trajectory_and_body["timestamp"].round(2)
+    fly_trajectory_and_body["timestamp"] = fly_trajectory_and_body["timestamp"].round(4)
     return fly_trajectory_and_body
 
 
 # ============================================================
 # Data Augmentation
 # ============================================================
+
+# Body mass and linear aerodynamic drag coefficient of a female Drosophila melanogaster in free flight,
+# from Fuller et al. (2014) PNAS 111:E1182: m = 1.1 mg (mean of the flies weighed before and after
+# trials) and b = 11 µN·s/m (fitted to free-flight gust responses). Drag time constant m/b = 0.1 s.
+FLY_MASS = 1.1e-6          # kg
+FLY_DRAG_COEFF = 11e-6     # N·s/m
+
+# Savitzky-Golay differentiation (pynd.savgoldiff) used for every derivative: quadratic over 11 frames,
+# then Gaussian smoothing over 10. Same as the earlier params=[2, 10, 10], whose even window was raised to 11.
+SAVGOL = dict(degree=2, window_size=11, smoothing_win=10)
 
 def augment_fly_trajectory(
     fly_trajectory_and_body: pd.DataFrame,
@@ -242,7 +247,7 @@ def augment_fly_trajectory(
       - thrust, thrust_angle
       - heading_angle (from ellipse_short_angle, if compute_heading_from_ellipses=True)
 
-    Uses a Savitzky-Golay differentiator (params=[2, 10, 10]) for acceleration.
+    Uses a Savitzky-Golay differentiator (SAVGOL) for acceleration.
 
     Parameters
     ----------
@@ -268,10 +273,9 @@ def augment_fly_trajectory(
     aug["airspeed"] = np.sqrt(air_vx**2 + air_vy**2)
     aug["airspeed_angle"] = np.arctan2(air_vy, air_vx)
 
-    params = [2, 10, 10]
     dt = np.median(np.diff(aug.timestamp))
-    _, accel_x = pynd.linear_model.savgoldiff(aug["velocity_x"], dt, params)
-    _, accel_y = pynd.linear_model.savgoldiff(aug["velocity_y"], dt, params)
+    _, accel_x = pynd.savgoldiff(aug["velocity_x"].values, dt, **SAVGOL)
+    _, accel_y = pynd.savgoldiff(aug["velocity_y"].values, dt, **SAVGOL)
     aug["linear_acceleration"] = np.sqrt(accel_x**2 + accel_y**2)
     aug["linear_acceleration_angle"] = np.arctan2(accel_y, accel_x)
 
@@ -285,10 +289,9 @@ def augment_fly_trajectory(
             return angle
         aug["heading_angle"] = _heading_from_ellipse(aug["ellipse_short_angle"])
 
-    mass = 0.25e-6
-    dragcoeff = mass / 0.170
-    thrust_x = mass * accel_x + dragcoeff * air_vx
-    thrust_y = mass * accel_y + dragcoeff * air_vy
+    # thrust = m * a + b * airvelocity (force balance m * a = thrust - drag, drag = b * airvelocity)
+    thrust_x = FLY_MASS * accel_x + FLY_DRAG_COEFF * air_vx
+    thrust_y = FLY_MASS * accel_y + FLY_DRAG_COEFF * air_vy
     aug["thrust"] = np.sqrt(thrust_x**2 + thrust_y**2)
     aug["thrust_angle"] = np.arctan2(thrust_y, thrust_x)
 
@@ -306,18 +309,16 @@ class compute:
     @staticmethod
     def angular_velocity(fly_df: pd.DataFrame, name_of_heading_field: str, name_of_time_field: str):
         """Compute angular velocity via Savitzky-Golay differentiation."""
-        params = [2, 10, 10]
         dt = np.median(np.diff(fly_df[name_of_time_field]))
-        _, ang_vel = pynd.linear_model.savgoldiff(fly_df[name_of_heading_field], dt, params)
+        _, ang_vel = pynd.savgoldiff(np.asarray(fly_df[name_of_heading_field]), dt, **SAVGOL)
         return ang_vel
 
     @staticmethod
     def angular_acceleration(fly_df: pd.DataFrame, name_of_heading_field: str, name_of_time_field: str):
         """Compute angular acceleration via Savitzky-Golay differentiation of angular velocity."""
-        params = [2, 10, 10]
         dt = np.median(np.diff(fly_df[name_of_time_field]))
-        _, ang_accel = pynd.linear_model.savgoldiff(
-            compute.angular_velocity(fly_df, name_of_heading_field, name_of_time_field), dt, params
+        _, ang_accel = pynd.savgoldiff(
+            compute.angular_velocity(fly_df, name_of_heading_field, name_of_time_field), dt, **SAVGOL
         )
         return ang_accel
 
@@ -330,25 +331,23 @@ class compute:
         -------
         accel_x, accel_y : np.ndarray
         """
-        params = [2, 10, 10]
         dt = np.median(np.diff(fly_trajectory_and_body.timestamp))
-        _, accel_x = pynd.linear_model.savgoldiff(fly_trajectory_and_body.velocity_x.values, dt, params)
-        _, accel_y = pynd.linear_model.savgoldiff(fly_trajectory_and_body.velocity_y.values, dt, params)
+        _, accel_x = pynd.savgoldiff(fly_trajectory_and_body.velocity_x.values, dt, **SAVGOL)
+        _, accel_y = pynd.savgoldiff(fly_trajectory_and_body.velocity_y.values, dt, **SAVGOL)
         return accel_x, accel_y
 
     @staticmethod
-    def thrust(fly_trajectory_and_body: pd.DataFrame, mass: float = 0.25e-6):
+    def thrust(fly_trajectory_and_body: pd.DataFrame, mass: float = FLY_MASS, dragcoeff: float = FLY_DRAG_COEFF):
         """
         Compute thrust force (x, y) from kinematics.
 
-        thrust = mass × acceleration + drag_coefficient × airvelocity,
-        where drag_coefficient = mass / 0.170.
+        thrust = mass × acceleration + drag_coefficient × airvelocity, with the mass (kg) and
+        drag coefficient (N·s/m) of Fuller et al. (2014) by default (FLY_MASS, FLY_DRAG_COEFF).
 
         Returns
         -------
         thrust_x, thrust_y : np.ndarray
         """
-        dragcoeff = mass / 0.170
         accel_x, accel_y = compute.linear_acceleration(fly_trajectory_and_body)
         thrust_x = mass * accel_x + dragcoeff * fly_trajectory_and_body.airvelocity_x.values
         thrust_y = mass * accel_y + dragcoeff * fly_trajectory_and_body.airvelocity_y.values
@@ -487,6 +486,115 @@ def heading_correction(
 
     fly_trajectory_and_body["heading_angle"] = wrapToPi(corrected)
     return fly_trajectory_and_body
+
+
+# Reliability ramps for heading_correction_viterbi, from how closely each cue follows the measured body axis
+# (sign-free, frames with an elongated ellipse): the thrust direction is nearly unrelated to the axis below
+# ~3 µN (median axial error ~40°, 45° = chance) and within ~6° of it above ~8 µN; the airspeed direction
+# likewise below ~0.3 and above ~0.7 m/s. Frame-to-frame axis changes > 45° almost never occur when both
+# ellipses have eccentricity < 0.6 (minor/major axis ratio; 1 = round), but in 11-20 % of pairs above 0.8.
+THRUST_RELIABLE = (3e-6, 8e-6)      # N: evidence weight ramps from EVIDENCE_FLOOR to 1 between these
+AIRSPEED_RELIABLE = (0.3, 0.7)      # m/s
+ELLIPSE_RELIABLE = (0.6, 0.9)       # eccentricity: continuity ramps from full (below) to its minimum (above)
+EVIDENCE_FLOOR = 0.05               # weight of an unreliable cue, so it still breaks ties
+
+
+def _ramp(x, lo, hi, floor=0.0):
+    """floor below lo, 1 above hi, linear in between."""
+    return floor + (1 - floor) * np.clip((np.asarray(x) - lo) / (hi - lo), 0, 1)
+
+
+def heading_correction_viterbi(
+    fly_trajectory_and_body: pd.DataFrame,
+    air_weight: float = 0.3,
+    continuity: float = 5.0,
+    continuity_min: float = 0.2,
+    dev_thresh_deg: float = 40.0,
+    gap_thresh_deg: float = 30.0,
+) -> pd.DataFrame:
+    """
+    Correct 180° heading ambiguities by choosing the front/back sign of every frame jointly (Viterbi).
+
+    The ellipse gives the body axis but not which end is the head. Each frame therefore has two candidate
+    headings, axis and axis + π. The sign sequence that maximises
+
+        sum over frames of the evidence + sum over consecutive frames of the continuity
+
+    is found exactly by the Viterbi algorithm (two states per frame).
+
+    - Evidence for a candidate heading θ: w_T cos(θ − thrust_angle) + air_weight · w_A cos(θ − airspeed_angle),
+      with w_T and w_A ramping with thrust magnitude (THRUST_RELIABLE) and airspeed (AIRSPEED_RELIABLE),
+      so a weak thrust barely counts and the airspeed direction adds a slight bias.
+    - Continuity between frames: +κ cos Δ if both keep the same sign, −κ cos Δ if the sign switches, where Δ
+      is the change of the body axis (|Δ| ≤ 90°). A switch costs 2κ cos Δ: expensive for a small axis change,
+      free for a 90° one, which is ambiguous. κ is `continuity` when both ellipses are elongated and falls to
+      `continuity_min` when either is nearly round (ELLIPSE_RELIABLE), where the measured axis is unreliable;
+      it is divided by the number of frame intervals across a gap in the timestamps.
+
+    Where thrust is weak, neighbouring frames therefore decide the sign; across nearly round ellipses each part
+    of the trajectory is decided by its own evidence. Before the sign is chosen, the body axis is unwrapped
+    (period π) and isolated single-frame outliers are interpolated, as in heading_correction.
+
+    Parameters
+    ----------
+    fly_trajectory_and_body : pd.DataFrame
+        Must have 'heading_angle' (body axis, modulo π), 'thrust', 'thrust_angle', 'airspeed',
+        'airspeed_angle', 'eccentricity' and 'timestamp' columns.
+    air_weight : float
+        Weight of the airspeed direction relative to the thrust direction.
+    continuity, continuity_min : float
+        κ between frames with elongated and with nearly round ellipses.
+    dev_thresh_deg, gap_thresh_deg : float
+        Single-frame outlier thresholds (see _spike_detect_and_interp).
+
+    Returns
+    -------
+    pd.DataFrame
+        Input DataFrame with 'heading_angle' corrected and 'heading_confidence' added (mutated in place):
+        the posterior probability (forward-backward, with the scores as log-potentials) that the chosen sign
+        is correct. It is usually 0.5-1, but can fall below 0.5 at a frame where the best sign sequence as a
+        whole differs from the most probable sign of that frame alone.
+    """
+    df = fly_trajectory_and_body
+    axis = np.unwrap(df["heading_angle"].values, period=np.pi, discont=0.5 * np.pi)
+    axis, _ = _spike_detect_and_interp(axis, np.radians(dev_thresh_deg), np.radians(gap_thresh_deg))
+
+    w_thrust = _ramp(df["thrust"].values, *THRUST_RELIABLE, floor=EVIDENCE_FLOOR)
+    w_air = air_weight * _ramp(df["airspeed"].values, *AIRSPEED_RELIABLE, floor=EVIDENCE_FLOOR)
+    e = w_thrust * np.cos(axis - df["thrust_angle"].values) + w_air * np.cos(axis - df["airspeed_angle"].values)
+    evidence = np.column_stack([e, -e])            # sign 0: heading = axis; sign 1: axis + π
+
+    ecc = df["eccentricity"].values
+    ellipse_ok = 1 - _ramp(np.maximum(ecc[1:], ecc[:-1]), *ELLIPSE_RELIABLE)
+    t = df["timestamp"].values
+    n_intervals = np.maximum(1, np.round(np.diff(t) / np.median(np.diff(t)))) if len(t) > 1 else np.ones(0)
+    kappa = (continuity_min + (continuity - continuity_min) * ellipse_ok) / n_intervals
+    c = kappa * np.cos(np.diff(axis))
+    link = np.stack([np.stack([c, -c], -1), np.stack([-c, c], -1)], -2)  # link[t, s, s']
+
+    n = len(axis)
+    score, back = evidence[0].copy(), np.zeros((n, 2), dtype=int)
+    for i in range(1, n):
+        cand = score[:, None] + link[i - 1]
+        back[i] = np.argmax(cand, axis=0)
+        score = cand[back[i], [0, 1]] + evidence[i]
+    sign = np.zeros(n, dtype=int)
+    sign[-1] = np.argmax(score)
+    for i in range(n - 1, 0, -1):
+        sign[i - 1] = back[i, sign[i]]
+
+    log_f, log_b = np.zeros((n, 2)), np.zeros((n, 2))
+    log_f[0] = evidence[0]
+    for i in range(1, n):
+        log_f[i] = scipy.special.logsumexp(log_f[i - 1][:, None] + link[i - 1], axis=0) + evidence[i]
+    for i in range(n - 2, -1, -1):
+        log_b[i] = scipy.special.logsumexp(link[i] + evidence[i + 1] + log_b[i + 1], axis=1)
+    log_post = log_f + log_b
+    posterior = np.exp(log_post - scipy.special.logsumexp(log_post, axis=1, keepdims=True))
+
+    df["heading_angle"] = wrapToPi(axis + np.pi * sign)
+    df["heading_confidence"] = posterior[np.arange(n), sign]
+    return df
 
 
 # ============================================================
@@ -980,7 +1088,7 @@ def plot_trajectory(
     gnd_speed = np.where(gnd_speed == 0, 1, gnd_speed)
 
     plot_scale = 0.015 * arrow_scale
-    thrust_scale = 10000 * arrow_scale
+    thrust_scale = plot_scale / FLY_DRAG_COEFF   # drag-balancing thrust is drawn as long as its air velocity
 
     # Heading — triangles via fpl.colorline_with_heading
     xymean = np.mean(np.abs(np.hstack((pos_x, pos_y))))
