@@ -31,3 +31,8 @@ paper/*.fdb_latexmk
 *.csv
 *.svg
 *.parquet
+
+# Inferred headings (inferencedata/infer_splitflow_headings.py): large outputs, regenerated locally
+inferencedata/*.hdf
+inferencedata/*.h5
+inferencedata/*.parquet
