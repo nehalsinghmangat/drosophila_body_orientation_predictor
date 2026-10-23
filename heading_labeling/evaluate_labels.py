@@ -15,7 +15,7 @@ Two effects matter when reading the results:
   labeller judged independently (a) and how often the Viterbi correction is right where the two corrections
   disagree (q), from how often the label sides with Viterbi when each version was shown.
 
-Figure 1 (notebooks/generate_figure_1.ipynb) imports these functions for its validation panels.
+Figure 1 (generate_figures/generate_figure_1.ipynb) imports these functions for its validation panels.
 """
 import os
 import sys
