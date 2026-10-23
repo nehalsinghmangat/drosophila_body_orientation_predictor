@@ -1,0 +1,164 @@
+% Methods: resolving the front/back ambiguity of body orientation (heading_correction_viterbi in utils/utils.py)
+% Requires amsmath.
+
+\subsection*{Resolving the front/back ambiguity of body orientation}
+
+\paragraph{The problem.}
+Body orientation was measured by fitting an ellipse to the fly's silhouette in a top-down camera. An ellipse
+defines the body axis but not which end is the head, so in every frame $t = 1,\dots,n$ of a trajectory the
+heading is either the measured axis $a_t$ or the opposite direction $a_t + \pi$. We write this binary choice as
+$s_t \in \{0, 1\}$, with candidate heading
+\begin{equation}
+  \theta_t(s_t) = a_t + \pi s_t .
+\end{equation}
+Two kinds of information constrain the choice. First, physical cues point roughly forward: flies generate
+aerodynamic force mostly along the body axis and usually fly forward through the air. Second, body orientation
+changes little between consecutive frames (10\,ms apart), so neighbouring frames should usually make the same
+choice. Neither is sufficient on its own. The physical cues are unreliable whenever the force or the airspeed is
+small, and continuity only fixes the orientation of each frame \emph{relative} to its neighbours: following it
+from a single starting decision lets one mistake propagate through the rest of the trajectory. We therefore
+combine both kinds of information in a single score and choose the orientation of all frames of a trajectory
+jointly.
+
+\paragraph{Preparing the body axis.}
+Because the axis is only defined modulo $\pi$, we first make it continuous in time by adding multiples of $\pi$
+so that it never changes by more than $90^\circ$ between frames (\texttt{numpy.unwrap} with period $\pi$). A frame
+whose axis differs by more than $40^\circ$ from both neighbours, while the neighbours lie within $30^\circ$ of each
+other, is treated as a single bad ellipse fit and its axis is replaced by linear interpolation.
+
+\paragraph{Physical cues and their reliability.}
+The aerodynamic force (``thrust'') follows from the horizontal force balance $m\,\mathbf{a}_t = \mathbf{T}_t -
+b\,\mathbf{v}_{\mathrm{air},t}$, with linear drag:
+\begin{equation}
+  \mathbf{T}_t = m\,\mathbf{a}_t + b\,\mathbf{v}_{\mathrm{air},t}, \qquad
+  \mathbf{v}_{\mathrm{air},t} = \mathbf{v}_t - \mathbf{w},
+\end{equation}
+where $\mathbf{v}_t$ is the ground velocity, $\mathbf{w}$ the wind velocity, $\mathbf{a}_t$ the acceleration
+(Savitzky--Golay derivative of $\mathbf{v}_t$), $m = 1.1$\,mg the body mass and $b = 11\,\mu\mathrm{N\,s\,m^{-1}}$
+the drag coefficient of female \emph{D.~melanogaster} \citep{fuller2014}. We denote the directions of
+$\mathbf{T}_t$ and $\mathbf{v}_{\mathrm{air},t}$ by $\varphi_{T,t}$ and $\varphi_{A,t}$.
+
+The direction of a vector is dominated by measurement noise when its magnitude is small, so each cue must be
+weighted by how informative it is. We measured this directly, using the body axis itself, which is reliable even
+though its sign is not: in frames with a clearly elongated ellipse, the median angle between the axis and the
+thrust direction (ignoring sign) was $38$--$43^\circ$ for thrust below $3\,\mu$N, close to the $45^\circ$ expected
+if the two were unrelated, and $6$--$7^\circ$ above $8\,\mu$N. The airspeed direction behaved the same way:
+$37$--$43^\circ$ below $0.3$\,m\,s$^{-1}$ and $2$--$3^\circ$ above $0.7$\,m\,s$^{-1}$. Each cue therefore receives a
+weight that ramps linearly between these limits,
+\begin{equation}
+  r(x;\, x_{\mathrm{lo}}, x_{\mathrm{hi}}) = f + (1 - f)\,
+  \min\!\Big(1, \max\!\Big(0, \frac{x - x_{\mathrm{lo}}}{x_{\mathrm{hi}} - x_{\mathrm{lo}}}\Big)\Big),
+\end{equation}
+with a small floor $f = 0.05$ so that weak cues can still break ties. The \emph{evidence} that frame $t$ provides for
+candidate heading $\theta_t(s)$ is its agreement with the two cue directions:
+\begin{equation}
+  E_t(s) = w_{T,t}\cos\!\big(\theta_t(s) - \varphi_{T,t}\big)
+         + \lambda\, w_{A,t}\cos\!\big(\theta_t(s) - \varphi_{A,t}\big),
+\end{equation}
+with weights $w_{T,t} = r(|\mathbf{T}_t|;\, 3, 8\,\mu\mathrm{N})$ and
+$w_{A,t} = r(|\mathbf{v}_{\mathrm{air},t}|;\, 0.3, 0.7\,\mathrm{m\,s^{-1}})$. The cosine is $+1$ when a candidate points along the cue and $-1$ when it points against it, so the two candidates
+of a frame receive opposite evidence, $E_t(1) = -E_t(0)$. The airspeed term is down-weighted ($\lambda = 0.3$)
+because thrust already contains the air velocity through the drag term; it adds a slight bias toward forward
+flight through the air. Ground-velocity direction is not used, because flies are often carried sideways or
+backwards by the wind.
+
+\paragraph{Continuity between frames.}
+Consecutive frames should usually keep the same choice. We score this with
+\begin{equation}
+  C_t(s, s') = \kappa_t \cos\!\big(\theta_{t+1}(s') - \theta_t(s)\big)
+             = \pm\, \kappa_t \cos(a_{t+1} - a_t),
+\end{equation}
+which is positive when frames $t$ and $t+1$ make the same choice ($s' = s$) and negative when they switch. A switch
+therefore costs $2\kappa_t\cos(a_{t+1} - a_t)$: a lot when the axis barely moved, and nothing when the axis turned by
+$90^\circ$ in one frame, where both interpretations of the turn are equally plausible. The strength $\kappa_t$
+reflects how trustworthy the measured axis is. Nearly round ellipses (eccentricity, the minor-to-major axis ratio,
+close to 1) give a poorly defined axis: changes of more than $45^\circ$ between consecutive frames occurred in
+$0.2\%$ of frame pairs when both ellipses had eccentricity below $0.6$, but in $20\%$ when either exceeded $0.9$.
+Hence
+\begin{equation}
+  \kappa_t = \frac{\kappa_{\min} + (\kappa_{\max} - \kappa_{\min})\,\big(1 - \rho_t\big)}{g_t}, \qquad
+  \rho_t = \min\!\Big(1, \max\!\Big(0, \frac{\max(e_t, e_{t+1}) - 0.6}{0.3}\Big)\Big),
+\end{equation}
+with $\kappa_{\max} = 5$, $\kappa_{\min} = 0.2$, $e_t$ the eccentricity, and $g_t \ge 1$ the number of frame intervals
+spanned by the step (larger than 1 only across missing frames).
+
+\paragraph{Choosing all orientations jointly.}
+The score of a complete sequence of choices $\mathbf{s} = (s_1, \dots, s_n)$ is the total evidence plus the total
+continuity,
+\begin{equation}
+  S(\mathbf{s}) = \sum_{t=1}^{n} E_t(s_t) + \sum_{t=1}^{n-1} C_t(s_t, s_{t+1}),
+\end{equation}
+and the corrected heading is given by the sequence with the highest score, $\hat{\mathbf{s}} = \arg\max_{\mathbf{s}}
+S(\mathbf{s})$. Maximizing over whole sequences is what makes the method robust. Strong evidence anywhere in a
+trajectory is carried, through well-measured continuity, to frames whose own evidence is weak. Where the axis is
+poorly measured, continuity is weak, so the parts of the trajectory on either side are each decided by their own
+evidence instead of inheriting a single early decision. A frame is reversed relative to its neighbours only if
+the evidence for doing so outweighs the cost of the two switches it requires.
+
+A trajectory of $n$ frames has $2^n$ possible sequences, far too many to compare one by one. Because every term of
+$S$ involves at most two consecutive frames, however, the best sequence can be found exactly with the Viterbi
+algorithm \citep{viterbi1967}, a form of dynamic programming. Moving forward through the trajectory, we keep, for
+each of the two choices at frame $t$, the score $V_t(s)$ of the best partial sequence that ends with that choice,
+\begin{equation}
+  V_1(s) = E_1(s), \qquad
+  V_{t+1}(s') = E_{t+1}(s') + \max_{s} \big[ V_t(s) + C_t(s, s') \big],
+\end{equation}
+and remember which choice at frame $t$ achieved the maximum. Any best sequence that passes through choice $s'$ at
+frame $t+1$ must reach it through the best partial sequence ending at frame $t$, so only these two running scores
+are needed. The best final choice $\arg\max_s V_n(s)$ is then traced back through the remembered predecessors.
+This yields the exact optimum in time proportional to $n$.
+
+\paragraph{Confidence.}
+To express how strongly the data support each frame's orientation, we interpret $\exp S(\mathbf{s})$ as the
+relative plausibility of sequence $\mathbf{s}$, as in a hidden Markov model,
+\begin{equation}
+  P(\mathbf{s}) = \frac{\exp S(\mathbf{s})}{\sum_{\mathbf{s}'} \exp S(\mathbf{s}')},
+\end{equation}
+and define the confidence of frame $t$ as the total plausibility of all sequences that agree with the chosen
+orientation at that frame,
+\begin{equation}
+  c_t = P(s_t = \hat s_t) = \frac{\sum_{\mathbf{s}:\, s_t = \hat s_t} \exp S(\mathbf{s})}
+                                 {\sum_{\mathbf{s}} \exp S(\mathbf{s})}.
+\end{equation}
+These sums over all $2^n$ sequences are computed exactly with the forward--backward algorithm, which has the same
+structure as the Viterbi recursion with the maximum replaced by a sum:
+\begin{align}
+  \alpha_1(s) &= e^{E_1(s)}, &
+  \alpha_{t+1}(s') &= e^{E_{t+1}(s')} \sum_{s} \alpha_t(s)\, e^{C_t(s, s')}, \\
+  \beta_n(s) &= 1, &
+  \beta_t(s) &= \sum_{s'} e^{C_t(s, s') + E_{t+1}(s')}\, \beta_{t+1}(s'),
+\end{align}
+so that $c_t = \alpha_t(\hat s_t)\,\beta_t(\hat s_t) \big/ \sum_s \alpha_t(s)\,\beta_t(s)$. Here $\alpha_t$ summarizes the
+evidence from the start of the trajectory up to frame $t$, and $\beta_t$ the evidence after it. A frame isolated from
+its neighbours has $c_t = 1/(1 + e^{-2E_t(\hat s_t)})$, at most $0.88$ even for strong thrust pointing exactly along
+the chosen heading; confidence close to 1 arises when well-measured continuity links a frame to many frames with
+consistent evidence. Confidence is low where cues are weak or conflicting, or where nearly round ellipses cut a
+frame off from strong evidence. Because multiplying all weights by a common factor leaves $\hat{\mathbf{s}}$
+unchanged but changes $c_t$, the confidence ranks frames by reliability but is not a calibrated probability. In
+rare frames it falls below $0.5$, where the best sequence as a whole disagrees with the most plausible choice
+for that frame alone.
+
+\paragraph{Parameters and validation.}
+The parameters ($\lambda$, $\kappa_{\min}$, $\kappa_{\max}$, the ramp limits and the floor) were set from the
+reliability analysis above, before any hand labels were collected. To test the method, one of us labelled
+the front/back orientation of 285 trajectories (3{,}928 frames, about 14 per trajectory, spaced evenly along the
+path) in a custom tool that showed the trajectory with the body ellipse, air velocity, thrust and a candidate
+heading, without indicating which method had produced it. The sample over-represented trajectories on which the
+Viterbi correction and a simpler procedure (aligning the first frames and then the whole trajectory with the
+thrust direction, and otherwise following frame-to-frame continuity) disagreed, and
+dataset-wide estimates therefore weight each sampling stratum by its size. The raw ellipse orientation had the
+correct front/back direction in $79.8\%$ of frames (95\% bootstrap interval over trajectories, $74.9$--$84.8\%$),
+the simpler procedure in $96.7\%$ ($96.1$--$97.3\%$) and the Viterbi correction in $97.9\%$ ($97.4$--$98.4\%$).
+A search over 12{,}600 parameter combinations, evaluated by five-fold cross-validation over trajectories, did not
+improve on the a priori parameters on held-out labels, so these were kept. Disagreement with the hand labels fell
+monotonically with confidence, from $27\%$ of frames with $c_t < 0.7$ to $9\%$ for $0.9 \le c_t < 0.99$ and $1.5\%$ for
+$c_t \ge 0.999$; $76\%$ of all frames had $c_t \ge 0.999$ and $10\%$ had $c_t < 0.9$. On ambiguous frames the
+labeller tended to accept whichever orientation was shown. This pulls the measured accuracies of the two
+corrections toward each other, so their difference is a conservative estimate, but it may flatter both relative
+to the raw orientation, which was never shown.
+
+% Bibliography entries assumed:
+%   fuller2014: Fuller SB, Straw AD, Peek MY, Murray RM, Dickinson MH (2014) Flying Drosophila stabilize their
+%               vision-based velocity controller by sensing wind with their antennae. PNAS 111:E1182-E1191.
+%   viterbi1967: Viterbi AJ (1967) Error bounds for convolutional codes and an asymptotically optimum decoding
+%               algorithm. IEEE Trans Inf Theory 13:260-269.
