@@ -1,0 +1,6 @@
+{
+  "wind_speed": 0.6,
+  "wind_direction_deg": 180.0,
+  "source": "flies_varwind_C1WT_combined_optotrigger_fancontrol_trimmed.parquet, obj_id_unique_event 20260429_164433_16751_221 (zigzagging upwind; flash intensity 255)",
+  "units": "x, y, z: m; xvel, yvel, zvel: m/s; time: s relative to the opto flash"
+}
