@@ -230,8 +230,10 @@ FLY_MASS = 1.1e-6          # kg
 FLY_DRAG_COEFF = 11e-6     # N·s/m
 
 # Savitzky-Golay differentiation (pynd.savgoldiff) used for every derivative: quadratic over 11 frames,
-# then Gaussian smoothing over 10. Same as the earlier params=[2, 10, 10], whose even window was raised to 11.
-SAVGOL = dict(degree=2, window_size=11, smoothing_win=10)
+# then Gaussian smoothing over 11. pynumdiff 0.3 raises an even smoothing window to the next odd one, so the
+# smoothing_win=10 used with 0.2.2 (and the earlier params=[2, 10, 10]) now runs as 11; data made before the upgrade
+# used 10.
+SAVGOL = dict(degree=2, window_size=11, smoothing_win=11)
 
 def augment_fly_trajectory(
     fly_trajectory_and_body: pd.DataFrame,

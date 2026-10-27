@@ -10,8 +10,9 @@ pyarrow==24.0.0
 keras>=3.3.3
 tensorflow>=2.16.2
 
-# Numerical differentiation
-pynumdiff==0.2.2
+# Numerical differentiation. Pinned to the commit that merged PyNumDiff PR #241 (no release yet): rtsdiff(circular=True)
+# as used by generate_figures/generate_figure_4.ipynb needs it (released 0.3 can alias after a large one-step change in angle)
+pynumdiff @ git+https://github.com/florisvb/PyNumDiff.git@f4184e33107f32ce59b0ad22a835ea1668d12093
 
 # Symbolic math (used in fly_plot_lib_plot.py)
 sympy==1.13.1
