@@ -109,34 +109,16 @@ are needed. The best final choice $\arg\max_s V_n(s)$ is then traced back throug
 This yields the exact optimum in time proportional to $n$.
 
 \paragraph{Confidence.}
-To express how strongly the data support each frame's orientation, we interpret $\exp S(\mathbf{s})$ as the
-relative plausibility of sequence $\mathbf{s}$, as in a hidden Markov model,
+To measure how strongly the data support each frame's orientation, we treat $\exp S(\mathbf{s})$ as the relative
+plausibility of sequence $\mathbf{s}$, as in a hidden Markov model. The confidence of frame $t$ is the share of the
+total plausibility of all $2^n$ sequences that belongs to sequences agreeing with the chosen orientation at that frame,
 \begin{equation}
-  P(\mathbf{s}) = \frac{\exp S(\mathbf{s})}{\sum_{\mathbf{s}'} \exp S(\mathbf{s}')},
+  c_t = \frac{\sum_{\mathbf{s}:\, s_t = \hat s_t} \exp S(\mathbf{s})}{\sum_{\mathbf{s}} \exp S(\mathbf{s})},
 \end{equation}
-and define the confidence of frame $t$ as the total plausibility of all sequences that agree with the chosen
-orientation at that frame,
-\begin{equation}
-  c_t = P(s_t = \hat s_t) = \frac{\sum_{\mathbf{s}:\, s_t = \hat s_t} \exp S(\mathbf{s})}
-                                 {\sum_{\mathbf{s}} \exp S(\mathbf{s})}.
-\end{equation}
-These sums over all $2^n$ sequences are computed exactly with the forward--backward algorithm, which has the same
-structure as the Viterbi recursion with the maximum replaced by a sum:
-\begin{align}
-  \alpha_1(s) &= e^{E_1(s)}, &
-  \alpha_{t+1}(s') &= e^{E_{t+1}(s')} \sum_{s} \alpha_t(s)\, e^{C_t(s, s')}, \\
-  \beta_n(s) &= 1, &
-  \beta_t(s) &= \sum_{s'} e^{C_t(s, s') + E_{t+1}(s')}\, \beta_{t+1}(s'),
-\end{align}
-so that $c_t = \alpha_t(\hat s_t)\,\beta_t(\hat s_t) \big/ \sum_s \alpha_t(s)\,\beta_t(s)$. Here $\alpha_t$ summarizes the
-evidence from the start of the trajectory up to frame $t$, and $\beta_t$ the evidence after it. A frame isolated from
-its neighbours has $c_t = 1/(1 + e^{-2E_t(\hat s_t)})$, at most $0.88$ even for strong thrust pointing exactly along
-the chosen heading; confidence close to 1 arises when well-measured continuity links a frame to many frames with
-consistent evidence. Confidence is low where cues are weak or conflicting, or where nearly round ellipses cut a
-frame off from strong evidence. Because multiplying all weights by a common factor leaves $\hat{\mathbf{s}}$
-unchanged but changes $c_t$, the confidence ranks frames by reliability but is not a calibrated probability. In
-rare frames it falls below $0.5$, where the best sequence as a whole disagrees with the most plausible choice
-for that frame alone.
+computed exactly with the forward--backward algorithm (see code). Confidence is close to 1 when well-measured
+continuity links a frame to many frames with consistent evidence, and low where the cues are weak or conflicting or
+where nearly round ellipses cut a frame off from strong evidence. It ranks frames by reliability but is not a
+calibrated probability.
 
 \paragraph{Parameters and validation.}
 The parameters ($\lambda$, $\kappa_{\min}$, $\kappa_{\max}$, the ramp limits and the floor) were set from the

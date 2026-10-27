@@ -1,29 +1,29 @@
 \begin{table}[h!]
     \centering
-    \caption{Median per-trajectory angular error (deg) of every linear, circular and M\"obius baseline and of the ANN on the held-out test trajectories, overall and by flight regime. Sorted by overall error, worst first.}
+    \caption{Median per-trajectory angular error (deg) of every linear, circular and M\"obius baseline and of the ANN on the held-out test trajectories, overall and by flight regime. Circular OLS and M\"obius regressions use only the direction of each input; linear OLS and the ANN use its magnitude and direction. Sorted by overall error, worst first.}
     \label{tab:baseline_regime}
     \begin{tabular}{@{}llrrrr@{}}
         \toprule
         Model & Inputs & Overall & Upwind & Crosswind & Downwind \\
         \midrule
-        Circular OLS & ground & 16.76 & 7.85 & 36.32 & 96.37 \\
-        Möbius circular regression & ground & 15.91 & 8.47 & 43.22 & 39.08 \\
-        Möbius circular regression & thrust & 15.22 & 10.87 & 38.97 & 38.98 \\
-        Linear OLS & thrust & 14.98 & 9.99 & 45.69 & 62.29 \\
-        Circular OLS & thrust & 13.88 & 9.42 & 48.45 & 41.52 \\
-        Linear OLS & ground & 11.01 & 5.52 & 33.86 & 48.83 \\
-        Circular OLS & thrust+ground & 10.71 & 6.84 & 34.05 & 29.59 \\
-        Linear OLS & air+ground & 10.24 & 5.51 & 33.01 & 45.45 \\
-        Linear OLS & air & 10.04 & 5.99 & 33.90 & 47.44 \\
-        Circular OLS & air & 9.79 & 6.15 & 42.62 & 30.97 \\
-        Circular OLS & thrust+air & 9.64 & 6.50 & 39.18 & 30.01 \\
-        Linear OLS & thrust+air & 9.63 & 5.82 & 31.87 & 44.06 \\
-        Circular OLS & thrust+air+ground & 9.55 & 6.06 & 31.99 & 21.91 \\
-        Linear OLS & thrust+ground & 9.50 & 5.55 & 31.19 & 42.03 \\
-        Linear OLS & thrust+air+ground & 9.49 & 5.56 & 31.28 & 41.28 \\
-        Circular OLS & air+ground & 9.42 & 6.25 & 35.07 & 22.54 \\
-        Möbius circular regression & air & 8.32 & 7.05 & 26.32 & 21.13 \\
-        ANN & groundspeed + airspeed & 4.96 & 5.08 & 20.16 & 5.64 \\
+        Circular OLS & ground velocity & 16.8 & 7.8 & 36.3 & 96.4 \\
+        Möbius circular regression & ground velocity & 15.9 & 8.5 & 43.2 & 39.1 \\
+        Möbius circular regression & thrust & 15.2 & 10.9 & 39.0 & 39.0 \\
+        Linear OLS & thrust & 15.0 & 10.0 & 45.7 & 62.3 \\
+        Circular OLS & thrust & 13.9 & 9.4 & 48.5 & 41.5 \\
+        Linear OLS & ground velocity & 11.0 & 5.5 & 33.9 & 48.8 \\
+        Circular OLS & thrust + ground velocity & 10.7 & 6.8 & 34.1 & 29.6 \\
+        Linear OLS & air velocity + ground velocity & 10.2 & 5.5 & 33.0 & 45.4 \\
+        Linear OLS & air velocity & 10.0 & 6.0 & 33.9 & 47.4 \\
+        Circular OLS & air velocity & 9.8 & 6.2 & 42.6 & 31.0 \\
+        Circular OLS & thrust + air velocity & 9.6 & 6.5 & 39.2 & 30.0 \\
+        Linear OLS & thrust + air velocity & 9.6 & 5.8 & 31.9 & 44.1 \\
+        Circular OLS & thrust + air velocity + ground velocity & 9.5 & 6.1 & 32.0 & 21.9 \\
+        Linear OLS & thrust + ground velocity & 9.5 & 5.5 & 31.2 & 42.0 \\
+        Linear OLS & thrust + air velocity + ground velocity & 9.5 & 5.6 & 31.3 & 41.3 \\
+        Circular OLS & air velocity + ground velocity & 9.4 & 6.3 & 35.1 & 22.5 \\
+        Möbius circular regression & air velocity & 8.3 & 7.1 & 26.3 & 21.1 \\
+        ANN & air velocity + ground velocity & 5.0 & 5.1 & 20.2 & 5.6 \\
         \bottomrule
     \end{tabular}
 \end{table}
