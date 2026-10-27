@@ -67,7 +67,7 @@ def _(REPO_DIR):
     REQUIRED_COLUMNS = ['x', 'y', 'xvel', 'yvel', 'time']
 
     # observed in the training data (02_training_and_testing_the_ann.ipynb)
-    TRAINING_RANGES = {'groundspeed': (3.645e-05, 1.2146), 'airspeed': (0.002057, 1.5241)}
+    TRAINING_RANGES = {'groundspeed': (9.894e-05, 1.381), 'airspeed': (0.002057, 1.676)}
     TRAINING_WIND_SPEEDS = (0.3, 0.6)
 
     _ensemble = [REPO_DIR / 'models' / 'ensemble' / f'ann_seed_{s}.keras' for s in (42, 7, 13, 99, 123)]

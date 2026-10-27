@@ -52,7 +52,7 @@ DATASETS = {
 }
 
 # observed in the training data (02_training_and_testing_the_ann.ipynb), as in heading_inference.py
-TRAINING_RANGES = {'groundspeed': (3.645e-05, 1.2146), 'airspeed': (0.002057, 1.5241)}
+TRAINING_RANGES = {'groundspeed': (9.894e-05, 1.381), 'airspeed': (0.002057, 1.676)}
 
 
 def compute_ann_inputs(xvel, yvel, wind_speed, wind_direction_deg):
