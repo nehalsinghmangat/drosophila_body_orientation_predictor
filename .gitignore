@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 .ipynb_checkpoints/
+__marimo__/
 
 # Data — large HDF5 files; download separately from Dryad
 experimentaldata/**/*.h5
@@ -25,7 +26,13 @@ paper/*.fdb_latexmk
 .vscode/
 .DS_Store
 .envrc
+.#*
 
 *.csv
 *.svg
 *.parquet
+
+# Inferred headings (inferencedata/infer_splitflow_headings.py): large outputs, regenerated locally
+inferencedata/*.hdf
+inferencedata/*.h5
+inferencedata/*.parquet

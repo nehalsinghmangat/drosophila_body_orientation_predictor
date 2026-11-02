@@ -10,8 +10,9 @@ pyarrow==24.0.0
 keras>=3.3.3
 tensorflow>=2.16.2
 
-# Numerical differentiation
-pynumdiff==0.2.2
+# Numerical differentiation. Pinned to the commit that merged PyNumDiff PR #241 (no release yet): rtsdiff(circular=True)
+# as used by generate_figures/generate_figure_4.ipynb needs it (released 0.3 can alias after a large one-step change in angle)
+pynumdiff @ git+https://github.com/florisvb/PyNumDiff.git@f4184e33107f32ce59b0ad22a835ea1668d12093
 
 # Symbolic math (used in fly_plot_lib_plot.py)
 sympy==1.13.1
@@ -20,3 +21,22 @@ sympy==1.13.1
 jupyterlab==4.2.4
 ipykernel==6.29.5
 ipywidgets==8.1.3
+
+# Interactive example (example_inference/)
+marimo
+
+# Reading the SplitFlowOptoTracking laminar HDF (inferencedata/infer_splitflow_headings.py,
+# example_inference/extract_splitflow_trajectory.py)
+tables==3.11.1
+
+# Figures (generate_figures/generate_figure_1.ipynb): figurefirst, installed by hand. The PyPI release (0.0.6)
+# imports `imp`, removed in Python 3.12, and the GitHub master's setup.py looks for a missing
+# inkscape_extensions/1.x directory. Install from a clone with that path changed to 1.1+:
+#   git clone https://github.com/FlyRanch/figurefirst.git
+#   sed -i '' 's/"1\.x"/"1.1+"/g' figurefirst/setup.py    # GNU sed: sed -i 's/...'
+#   pip install ./figurefirst "setuptools<81"              # figurefirst needs pkg_resources
+
+# Figure 2 (generate_figures/generate_figure_2.ipynb): ann_graphic_generator, installed without its dependencies.
+# It pins numpy>=2.4 and matplotlib>=3.11, which TensorFlow here rules out, but runs with the versions above.
+# networkx is the only dependency it imports that is not already installed. The venv is managed by uv (no pip):
+#   uv pip install --python .venv/bin/python --no-deps "git+https://github.com/vanbreugel-lab/ann_graphic_generator@b53097b" networkx

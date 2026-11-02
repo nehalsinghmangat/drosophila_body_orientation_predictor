@@ -1,0 +1,6 @@
+{
+  "wind_speed": 0.4,
+  "wind_direction_deg": 180.0,
+  "source": "flies_laminar_c1xwt_preprocessed_optotrigger_trimmed.hdf, obj_id_unique_event 20220927_170437_3415_122 (SplitFlowOptoTracking Figure 5B, laminar example; flash intensity 100)",
+  "units": "x, y, z: m; xvel, yvel, zvel: m/s; time: s relative to the opto flash"
+}
